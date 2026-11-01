@@ -1,14 +1,52 @@
-import importlib.util
+import os
+import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+import torch
+
+# MINILLM_SOLUTIONS=1 이면 정답 패키지(solutions/minillm)를 대상으로 테스트한다.
+ROOT = Path(__file__).parent
+sys.path.insert(0, str(ROOT / "solutions" if os.environ.get("MINILLM_SOLUTIONS") == "1" else ROOT))
 
 
 @pytest.fixture
-def impl(request):
-    """현재 test_impl.py와 같은 디렉터리의 impl.py를 고유한 모듈 이름으로 로드한다."""
-    directory = Path(request.fspath).parent
-    spec = importlib.util.spec_from_file_location(f"{directory.name}_impl", directory / "impl.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def tiny_cfg():
+    from minillm.model import GPTConfig
+
+    return GPTConfig(vocab_size=64, block_size=32, n_layer=2, n_head=2, d_model=32, ffn_hidden=64)
+
+
+@pytest.fixture
+def tiny_model(tiny_cfg):
+    from minillm.model import GPT
+
+    torch.manual_seed(0)
+    return GPT(tiny_cfg)
+
+
+@contextmanager
+def _no_builtin_softmax():
+    def banned(*args, **kwargs):
+        raise AssertionError("torch 내장 softmax/attention 사용 금지")
+
+    targets = [
+        (torch, "softmax"),
+        (torch, "log_softmax"),
+        (torch.Tensor, "softmax"),
+        (torch.Tensor, "log_softmax"),
+        (torch.nn.functional, "softmax"),
+        (torch.nn.functional, "log_softmax"),
+        (torch.nn.functional, "scaled_dot_product_attention"),
+    ]
+    with pytest.MonkeyPatch.context() as mp:
+        for obj, name in targets:
+            mp.setattr(obj, name, banned)
+        yield
+
+
+@pytest.fixture
+def no_builtin_softmax():
+    """with no_builtin_softmax(): 블록 안에서 torch 내장 softmax/SDPA 호출을 금지한다."""
+    return _no_builtin_softmax
