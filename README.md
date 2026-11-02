@@ -2,6 +2,8 @@
 
 논문의 수식을 코드로 옮기는 연습을 목표로, 작은 GPT를 **autograd부터 프리트레이닝, 정렬(SFT·DPO·GRPO), 서빙 최적화(KV cache·양자화·speculative decoding)까지** 직접 구현하는 20단계 커리큘럼과, FlashAttention·GQA·mixed precision·LoRA를 다루는 심화 4단계로 구성된다. 모든 단계는 Apple Silicon M5 Mac(PyTorch MPS)에서 돌릴 수 있는 크기(약 12M 파라미터)로 설계했다.
 
+> 퇴근 후 공부하는 일정으로 진행하려면 [docs/STUDY_PLAN.md](docs/STUDY_PLAN.md)를 따른다: 평일 3회 × 60분 + 주말 3시간, 14주 (주 4시간 느린 트랙 22주).
+
 ## 구조
 
 ```
