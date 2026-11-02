@@ -34,8 +34,10 @@ def sample_next(logits, temperature=1.0, top_k=None, top_p=None, generator=None)
 def generate(model, idx, max_new_tokens, temperature=1.0, top_k=None, top_p=None, eos_id=None, use_cache=True, generator=None):
     """idx (B, T0) 뒤에 최대 max_new_tokens개를 생성해 (B, T0 + n) 반환.
     use_cache=True: 첫 스텝에 프롬프트 전체(prefill), 이후 직전 토큰 1개만 입력. False: 매 스텝 전체(최근 block_size) 재계산.
-    eos_id를 낸 시퀀스는 이후 eos_id로 채우고, 모든 시퀀스가 끝나면 조기 종료."""
+    eos_id를 낸 시퀀스는 이후 eos_id로 채우고, 모든 시퀀스가 끝나면 조기 종료.
+    총 길이가 block_size를 넘으면 RoPE 테이블 범위를 벗어나므로 cache 없이 sliding window로 생성한다."""
     model.eval()
+    use_cache = use_cache and idx.shape[1] + max_new_tokens <= model.cfg.block_size
     caches = model.new_caches(idx.shape[0], idx.shape[1] + max_new_tokens) if use_cache else None
     done = torch.zeros(idx.shape[0], dtype=torch.bool, device=idx.device)
     inp = idx

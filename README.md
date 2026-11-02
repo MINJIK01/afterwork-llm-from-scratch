@@ -137,7 +137,7 @@ python scripts/sft.py --lora_r 8 --lr 1e-3 --out out/sft_lora.pt
 
 ### 검증 상태와 소요 시간
 
-- 이 레포는 Linux CPU 환경에서 TinyShakespeare와 `--preset tiny`로 전체 파이프라인(데이터 준비 → 프리트레이닝 → SFT → DPO → GRPO → 벤치마크 → speculative decoding)과 심화 옵션(GQA, bf16/fp16, checkpointing, LoRA SFT)이 끝까지 동작함을 확인했고, 정답 구현으로 82개 테스트가 모두 통과한다.
+- 이 레포는 Linux CPU 환경에서 TinyShakespeare와 `--preset tiny`로 전체 파이프라인(데이터 준비 → 프리트레이닝 → SFT → DPO → GRPO → 벤치마크 → speculative decoding)과 심화 옵션(GQA, bf16/fp16, checkpointing, LoRA SFT)이 끝까지 동작함을 확인했고, 정답 구현으로 84개 테스트가 모두 통과한다.
 - mixed precision은 CPU autocast로만 검증했다. MPS의 bf16/fp16 autocast 동작은 실측하지 않았다.
 - M5 Mac에서의 소요 시간은 실측하지 않았다. FLOPs 기준 추정으로 m5 프리트레이닝은 1~2시간 수준이며, 실제 처리량은 로그의 `tok/s`로 확인하고 `--max_steps`로 조정한다.
 - CPU에서 빠르게 흐름만 확인하려면:

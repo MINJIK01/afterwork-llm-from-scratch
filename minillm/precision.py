@@ -26,6 +26,7 @@ class LossScaler:
     @torch.no_grad()
     def unscale_(self, params):
         """모든 grad를 scale로 나누고, inf/NaN이 하나라도 있으면 True 반환."""
+        grads = [p.grad for p in params if p.grad is not None]
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
 
     def update(self, found_inf):
@@ -44,16 +45,20 @@ def train_step_amp(model, optimizer, batches, grad_clip=1.0, dtype=torch.bfloat1
 
 
 class CheckpointFunction(torch.autograd.Function):
-    """forward는 no_grad로 실행하고 입력만 저장, backward에서 forward를 다시 계산해 gradient를 구한다. (step 23)"""
+    """forward는 no_grad로 실행하고 입력만 저장, backward에서 forward를 다시 계산해 gradient를 구한다. (step 23)
+    재계산은 원래 forward와 같은 연산이어야 하므로 forward 시점의 autocast 상태를 저장해 backward에서 복원한다."""
 
     @staticmethod
     def forward(ctx, fn, *args):
+        ctx.device_type = args[0].device.type
+        ctx.autocast = (torch.is_autocast_enabled(ctx.device_type), torch.get_autocast_dtype(ctx.device_type))
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
 
     @staticmethod
     def backward(ctx, grad_out):
-        """저장한 입력을 detach해 leaf로 만든 뒤 enable_grad 아래에서 fn을 재실행하고
+        """저장한 입력을 detach해 leaf로 만든 뒤 enable_grad + 저장된 autocast 상태 아래에서 fn을 재실행하고
         torch.autograd.backward(out, grad_out)로 파라미터 grad를 누적. 반환: (fn 자리 None, 각 입력의 grad 또는 None)."""
+        enabled, dtype = ctx.autocast
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
 
 

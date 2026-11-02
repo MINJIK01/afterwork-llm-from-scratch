@@ -29,13 +29,11 @@ class LossScaler:
     @torch.no_grad()
     def unscale_(self, params):
         """모든 grad를 scale로 나누고, inf/NaN이 하나라도 있으면 True 반환."""
+        grads = [p.grad for p in params if p.grad is not None]
         # BEGIN SOLUTION (step 23)
-        found_inf = False
-        for p in params:
-            if p.grad is not None:
-                p.grad.div_(self.scale)
-                found_inf |= not torch.isfinite(p.grad).all().item()
-        return found_inf
+        for g in grads:
+            g.div_(self.scale)
+        return not torch.stack([torch.isfinite(g).all() for g in grads]).all().item()
         # END SOLUTION
 
     def update(self, found_inf):
@@ -79,10 +77,13 @@ def train_step_amp(model, optimizer, batches, grad_clip=1.0, dtype=torch.bfloat1
 
 
 class CheckpointFunction(torch.autograd.Function):
-    """forward는 no_grad로 실행하고 입력만 저장, backward에서 forward를 다시 계산해 gradient를 구한다. (step 23)"""
+    """forward는 no_grad로 실행하고 입력만 저장, backward에서 forward를 다시 계산해 gradient를 구한다. (step 23)
+    재계산은 원래 forward와 같은 연산이어야 하므로 forward 시점의 autocast 상태를 저장해 backward에서 복원한다."""
 
     @staticmethod
     def forward(ctx, fn, *args):
+        ctx.device_type = args[0].device.type
+        ctx.autocast = (torch.is_autocast_enabled(ctx.device_type), torch.get_autocast_dtype(ctx.device_type))
         # BEGIN SOLUTION (step 23)
         ctx.fn = fn
         ctx.save_for_backward(*args)
@@ -92,11 +93,12 @@ class CheckpointFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out):
-        """저장한 입력을 detach해 leaf로 만든 뒤 enable_grad 아래에서 fn을 재실행하고
+        """저장한 입력을 detach해 leaf로 만든 뒤 enable_grad + 저장된 autocast 상태 아래에서 fn을 재실행하고
         torch.autograd.backward(out, grad_out)로 파라미터 grad를 누적. 반환: (fn 자리 None, 각 입력의 grad 또는 None)."""
+        enabled, dtype = ctx.autocast
         # BEGIN SOLUTION (step 23)
         args = [a.detach().requires_grad_(a.requires_grad) for a in ctx.saved_tensors]
-        with torch.enable_grad():
+        with torch.enable_grad(), torch.autocast(ctx.device_type, dtype=dtype, enabled=enabled):
             out = ctx.fn(*args)
         torch.autograd.backward(out, grad_out)
         return (None, *[a.grad if a.requires_grad else None for a in args])

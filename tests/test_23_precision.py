@@ -81,3 +81,18 @@ def test_checkpointing_same_grads_less_memory(tiny_cfg):
         assert torch.allclose(pa.grad, pb.grad, atol=1e-6)
     assert bytes_b < bytes_a / 2
     assert list(a.state_dict()) == list(b.state_dict())
+
+
+def test_checkpointing_under_autocast_recomputes_same_ops(tiny_cfg):
+    from minillm.functional import cross_entropy
+
+    torch.manual_seed(0)
+    a = GPT(tiny_cfg)
+    b = enable_checkpointing(copy.deepcopy(a))
+    x, y = torch.randint(0, 64, (4, 32)), torch.randint(0, 64, (4, 32))
+    for m in (a, b):
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            logits, _ = m(x)
+        cross_entropy(logits.float().flatten(0, 1), y.flatten()).backward()
+    for pa, pb in zip(a.parameters(), b.parameters()):
+        assert torch.allclose(pa.grad, pb.grad, atol=1e-7)

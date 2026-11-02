@@ -31,6 +31,12 @@ def test_generate_cache_equals_no_cache(tiny_model):
     assert torch.equal(a, b)
 
 
+def test_generate_beyond_block_size_falls_back(tiny_model, tiny_cfg):
+    idx = torch.randint(0, 64, (1, 4))
+    out = generate(tiny_model, idx, tiny_cfg.block_size + 10, temperature=0)
+    assert out.shape == (1, 4 + tiny_cfg.block_size + 10)
+
+
 def test_kv_cache_bytes():
     # Llama-2-7B: 32 layers, 32 heads, head_dim 128, fp16, 4096 tokens → 2 GiB
     assert kv_cache_bytes(32, 32, 128, 1, 4096, 2) == 2 * 1024**3

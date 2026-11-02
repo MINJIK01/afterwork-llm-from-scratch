@@ -61,6 +61,7 @@ AdamW + fp32 학습에서 파라미터당 메모리는 파라미터 4B + gradien
 
 - `forward(ctx, fn, *args)`: `torch.no_grad()`로 `fn`을 실행해 내부 그래프와 activation을 만들지 않고, 입력만 `ctx.save_for_backward`로 저장한다.
 - `backward(ctx, grad_out)`: 저장된 입력을 `detach().requires_grad_()`로 새 leaf로 만들고, `torch.enable_grad()` 아래에서 `fn`을 다시 실행한 뒤 `torch.autograd.backward(out, grad_out)`를 호출한다. 이때 블록 파라미터의 `.grad`에는 gradient가 직접 누적되고, 입력 leaf의 `.grad`를 바깥 그래프로 반환한다.
+- 재계산은 원래 forward와 **같은 연산**이어야 한다. forward가 bf16 autocast 안에서 실행됐는데 backward의 재계산이 autocast 밖(fp32)에서 실행되면, 구한 gradient가 실제로 실행된 forward의 gradient와 달라진다(이 레포 개발 중 실제로 상대 오차 약 $10^{-3}$로 확인됨). 그래서 forward 시점의 autocast 상태(`torch.is_autocast_enabled`, `torch.get_autocast_dtype`)를 `ctx`에 저장하고 재계산을 같은 상태로 감싼다(제공 코드). `torch.utils.checkpoint`도 같은 이유로 autocast 상태와 난수 상태를 저장한다.
 - 이 방식(재진입형)은 입력 중 최소 하나가 `requires_grad`여야 하고(아니면 Function 출력이 grad를 요구하지 않아 backward가 호출되지 않는다), dropout이 있으면 forward와 재계산의 난수 상태를 맞춰야 한다. 이 모델은 dropout이 없다.
 
 `enable_checkpointing(model)`은 각 `Block` 인스턴스의 클래스를 `CheckpointedBlock`(Block 하위 클래스)으로 바꿔, 학습 중(grad 활성, cache 없음) forward만 checkpoint로 감싼다. 모듈 구조가 그대로이므로 `state_dict` 키가 바뀌지 않아 체크포인트 호환성이 유지된다.
