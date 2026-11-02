@@ -12,6 +12,7 @@ from minillm.data import get_batch
 from minillm.generate import generate
 from minillm.model import GPT, GPTConfig
 from minillm.optim import configure_optimizer, cosine_lr
+from minillm.precision import LossScaler, enable_checkpointing, train_step_amp
 from minillm.trainer import evaluate, train_step
 
 PRESETS = {
@@ -35,14 +36,22 @@ def main():
     ap.add_argument("--batch_size", type=int)
     ap.add_argument("--lr", type=float)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--n_kv_head", type=int, help="GQA KV head 수 (step 22). 생략하면 MHA")
+    ap.add_argument("--dtype", choices=["fp32", "bf16", "fp16"], default="fp32", help="mixed precision (step 23)")
+    ap.add_argument("--grad_ckpt", action="store_true", help="gradient checkpointing (step 23)")
     args = ap.parse_args()
     cfg_p = PRESETS[args.preset] | {k: v for k, v in vars(args).items() if k in ("max_steps", "batch_size", "lr") and v}
     out = Path(args.out) if args.out else OUT / f"{'draft' if args.preset == 'draft' else 'pretrain'}.pt"
 
     torch.manual_seed(args.seed)
     dev, tok = device(), load_tokenizer()
-    model = GPT(GPTConfig(vocab_size=tok.vocab_size, **cfg_p["model"])).to(dev)
-    print(f"device {dev} | params {model.num_params() / 1e6:.2f}M | preset {args.preset}")
+    model = GPT(GPTConfig(vocab_size=tok.vocab_size, n_kv_head=args.n_kv_head, **cfg_p["model"])).to(dev)
+    if args.grad_ckpt:
+        enable_checkpointing(model)
+    amp = {"bf16": torch.bfloat16, "fp16": torch.float16}.get(args.dtype)
+    scaler = LossScaler() if args.dtype == "fp16" else None
+    print(f"device {dev} | params {model.num_params() / 1e6:.2f}M | preset {args.preset} | dtype {args.dtype}"
+          f" | n_kv_head {args.n_kv_head or cfg_p['model']['n_head']} | grad_ckpt {args.grad_ckpt}")
 
     train = np.memmap(DATA / "train.bin", dtype=np.uint16, mode="r")
     val = np.memmap(DATA / "val.bin", dtype=np.uint16, mode="r")
@@ -56,7 +65,11 @@ def main():
         lr = cosine_lr(step, cfg_p["lr"], cfg_p["lr"] / 10, cfg_p["warmup"], steps)
         for g in opt.param_groups:
             g["lr"] = lr
-        loss, norm = train_step(model, opt, [get_batch(train, bs, T, dev, gen) for _ in range(accum)])
+        batches = [get_batch(train, bs, T, dev, gen) for _ in range(accum)]
+        if amp is None:
+            loss, norm = train_step(model, opt, batches)
+        else:
+            loss, norm = train_step_amp(model, opt, batches, 1.0, amp, scaler)
         if step % 20 == 0:
             tps = bs * T * accum * (step + 1) / (time.time() - t0)
             print(f"step {step:5d} | loss {loss:.4f} | lr {lr:.2e} | grad norm {norm:.2f} | {tps:,.0f} tok/s")

@@ -90,6 +90,42 @@ class CausalSelfAttention(nn.Module):
         # END SOLUTION
 
 
+def repeat_kv(x, n_rep):
+    """(B, Hkv, T, hd) → (B, Hkv·n_rep, T, hd). 각 KV head를 n_rep번 연속 반복해 query head h가 KV head h // n_rep를 쓰게 한다. (step 22)"""
+    # BEGIN SOLUTION (step 22)
+    return x if n_rep == 1 else x.repeat_interleave(n_rep, dim=1)
+    # END SOLUTION
+
+
+class GroupedQueryAttention(nn.Module):
+    """GQA (Ainslie et al. 2023): n_kv_head개의 K/V head를 n_head // n_kv_head개 query head가 공유. n_kv_head=1이면 MQA. (step 22)"""
+
+    def __init__(self, d_model, n_head, n_kv_head):
+        super().__init__()
+        assert d_model % n_head == 0 and n_head % n_kv_head == 0
+        self.n_head, self.n_kv_head, self.head_dim = n_head, n_kv_head, d_model // n_head
+        self.q = nn.Linear(d_model, d_model, bias=False)
+        self.kv = nn.Linear(d_model, 2 * n_kv_head * self.head_dim, bias=False)  # 앞 절반 K, 뒤 절반 V
+        self.proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x, cos, sin, cache=None):
+        """CausalSelfAttention과 같은 규약. cache에는 KV head n_kv_head개만 저장한다."""
+        B, T, C = x.shape
+        # BEGIN SOLUTION (step 22)
+        q = self.q(x).view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+        k, v = self.kv(x).view(B, T, 2 * self.n_kv_head, self.head_dim).transpose(1, 2).chunk(2, dim=1)
+        q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
+        # END SOLUTION
+        if cache is not None:
+            k, v = cache.update(k, v)
+        # BEGIN SOLUTION (step 22)
+        n_rep, Tk = self.n_head // self.n_kv_head, k.shape[2]
+        mask = torch.ones(T, Tk, dtype=torch.bool, device=x.device).tril(diagonal=Tk - T)
+        y = scaled_dot_product_attention(q, repeat_kv(k, n_rep), repeat_kv(v, n_rep), mask)
+        return self.proj(y.transpose(1, 2).reshape(B, T, C))
+        # END SOLUTION
+
+
 class RMSNorm(nn.Module):
     """Zhang & Sennrich (2019). (step 09)"""
 
@@ -123,10 +159,13 @@ class SwiGLU(nn.Module):
 class Block(nn.Module):
     """Pre-norm Transformer block: x + Attn(Norm(x)), 이어서 x + FFN(Norm(x)). (step 09)"""
 
-    def __init__(self, d_model, n_head, ffn_hidden):
+    def __init__(self, d_model, n_head, ffn_hidden, n_kv_head=None):
         super().__init__()
         self.norm1 = RMSNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head)
+        if n_kv_head in (None, n_head):
+            self.attn = CausalSelfAttention(d_model, n_head)
+        else:
+            self.attn = GroupedQueryAttention(d_model, n_head, n_kv_head)
         self.norm2 = RMSNorm(d_model)
         self.ffn = SwiGLU(d_model, ffn_hidden)
 

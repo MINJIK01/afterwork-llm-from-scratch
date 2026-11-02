@@ -33,7 +33,9 @@ def main():
             outs[use_cache] = generate(model, idx, n, temperature=0, use_cache=use_cache)
         print(f"use_cache={use_cache!s:5} | {outs[use_cache].shape[1] - 1} tokens | {(outs[use_cache].shape[1] - 1) / t.elapsed:,.0f} tok/s")
     print(f"identical outputs: {torch.equal(outs[False], outs[True])}")
-    print(f"KV cache (this model, B=1, T={cfg.block_size}, fp32): {kv_cache_bytes(cfg.n_layer, cfg.n_head, hd, 1, cfg.block_size, 4) / 2**20:.2f} MiB")
+    n_kv = cfg.n_kv_head or cfg.n_head
+    print(f"KV cache (this model, n_kv_head={n_kv}, B=1, T={cfg.block_size}, fp32): "
+          f"{kv_cache_bytes(cfg.n_layer, n_kv, hd, 1, cfg.block_size, 4) / 2**20:.2f} MiB")
     print(f"KV cache (Llama-2-7B, B=8, T=4096, fp16): {kv_cache_bytes(32, 32, 128, 8, 4096, 2) / 2**30:.1f} GiB")
 
     print("== Weight-only quantization ==")

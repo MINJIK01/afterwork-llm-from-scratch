@@ -8,6 +8,7 @@ import torch
 
 from common import EOS, OUT, device, keyword_hit_rate, load_ckpt, load_tokenizer, pick_keyword, prompt_text, read_docs, save_ckpt, show_samples
 from minillm.align import build_sft_example
+from minillm.lora import apply_lora, merge_lora, trainable_params
 from minillm.optim import configure_optimizer, cosine_lr
 from minillm.trainer import train_step
 
@@ -20,6 +21,8 @@ def main():
     ap.add_argument("--steps", type=int, default=1000)
     ap.add_argument("--batch_size", type=int, default=32)
     ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--lora_r", type=int, default=0, help="0이면 전체 파라미터 학습, >0이면 LoRA (step 24). LoRA는 --lr 1e-3 권장")
+    ap.add_argument("--lora_alpha", type=float, default=16)
     args = ap.parse_args()
 
     dev, tok = device(), load_tokenizer()
@@ -40,6 +43,10 @@ def main():
     print(f"SFT examples {len(X):,} | example:\n{tok.decode(X[0][: (Y[0] != -100).nonzero().max() + 2].tolist())}")
 
     print(f"[before] keyword hit rate {keyword_hit_rate(model, tok, dev):.3f}")
+    total = model.num_params()
+    if args.lora_r:
+        apply_lora(model, args.lora_r, args.lora_alpha)
+    print(f"trainable params {trainable_params(model):,} / {total:,}")
     opt = configure_optimizer(model, args.lr, weight_decay=0.0)
     gen = torch.Generator().manual_seed(0)
     for step in range(args.steps):
@@ -50,6 +57,8 @@ def main():
         if step % 50 == 0:
             print(f"step {step:4d} | sft loss {loss:.4f}")
 
+    if args.lora_r:
+        merge_lora(model)
     print(f"[after] keyword hit rate {keyword_hit_rate(model, tok, dev):.3f}")
     show_samples(model, tok, dev)
     save_ckpt(Path(args.out), model)

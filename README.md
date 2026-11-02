@@ -1,6 +1,6 @@
 # ClaudePlayground — LLM을 처음부터 구현하는 실습 프로젝트
 
-논문의 수식을 코드로 옮기는 연습을 목표로, 작은 GPT를 **autograd부터 프리트레이닝, 정렬(SFT·DPO·GRPO), 서빙 최적화(KV cache·양자화·speculative decoding)까지** 직접 구현하는 20단계 커리큘럼이다. 모든 단계는 Apple Silicon M5 Mac(PyTorch MPS)에서 돌릴 수 있는 크기(약 12M 파라미터)로 설계했다.
+논문의 수식을 코드로 옮기는 연습을 목표로, 작은 GPT를 **autograd부터 프리트레이닝, 정렬(SFT·DPO·GRPO), 서빙 최적화(KV cache·양자화·speculative decoding)까지** 직접 구현하는 20단계 커리큘럼과, FlashAttention·GQA·mixed precision·LoRA를 다루는 심화 4단계로 구성된다. 모든 단계는 Apple Silicon M5 Mac(PyTorch MPS)에서 돌릴 수 있는 크기(약 12M 파라미터)로 설계했다.
 
 ## 구조
 
@@ -57,6 +57,11 @@ grep -rn "TODO: step 05" minillm/
 | **서빙 최적화** | | | |
 | 19 | Weight-only 양자화 (int8/int4) | `quant.py` | `bench_inference.py` |
 | 20 | Speculative decoding | `generate.py` | `speculative.py` |
+| **심화** (괄호 안 단계 직후에 진행해도 된다) | | | |
+| 21 | Online softmax, FlashAttention 방식 블록 attention (06) | `flash.py` | |
+| 22 | Grouped-Query / Multi-Query Attention (14) | `layers.py` | `pretrain.py --n_kv_head` |
+| 23 | Mixed precision(bf16, fp16 loss scaling), gradient checkpointing (12) | `precision.py` | `pretrain.py --dtype --grad_ckpt` |
+| 24 | LoRA (15) | `lora.py` | `sft.py --lora_r` |
 
 ## 환경 설정 (Mac)
 
@@ -118,9 +123,22 @@ python scripts/pretrain.py --preset draft
 python scripts/speculative.py
 ```
 
+### 심화 단계 옵션 (step 22–24)
+
+`pretrain.py`에 `--n_kv_head N`(GQA), `--dtype bf16|fp16`(mixed precision), `--grad_ckpt`(gradient checkpointing)를 붙일 수 있다. MPS에서 bf16이 지원되지 않으면 `--dtype fp16`을 쓴다.
+
+```bash
+python scripts/pretrain.py --preset m5 --n_kv_head 2 --dtype bf16 --grad_ckpt --out out/pretrain_gqa.pt
+```
+
+```bash
+python scripts/sft.py --lora_r 8 --lr 1e-3 --out out/sft_lora.pt
+```
+
 ### 검증 상태와 소요 시간
 
-- 이 레포는 Linux CPU 환경에서 TinyShakespeare와 `--preset tiny`로 전체 파이프라인(데이터 준비 → 프리트레이닝 → SFT → DPO → GRPO → 벤치마크 → speculative decoding)이 끝까지 동작함을 확인했고, 정답 구현으로 64개 테스트가 모두 통과한다.
+- 이 레포는 Linux CPU 환경에서 TinyShakespeare와 `--preset tiny`로 전체 파이프라인(데이터 준비 → 프리트레이닝 → SFT → DPO → GRPO → 벤치마크 → speculative decoding)과 심화 옵션(GQA, bf16/fp16, checkpointing, LoRA SFT)이 끝까지 동작함을 확인했고, 정답 구현으로 82개 테스트가 모두 통과한다.
+- mixed precision은 CPU autocast로만 검증했다. MPS의 bf16/fp16 autocast 동작은 실측하지 않았다.
 - M5 Mac에서의 소요 시간은 실측하지 않았다. FLOPs 기준 추정으로 m5 프리트레이닝은 1~2시간 수준이며, 실제 처리량은 로그의 `tok/s`로 확인하고 `--max_steps`로 조정한다.
 - CPU에서 빠르게 흐름만 확인하려면:
 

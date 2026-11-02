@@ -61,6 +61,31 @@ class CausalSelfAttention(nn.Module):
         raise NotImplementedError("TODO: step 08 (docs/08_*.md)")
 
 
+def repeat_kv(x, n_rep):
+    """(B, Hkv, T, hd) → (B, Hkv·n_rep, T, hd). 각 KV head를 n_rep번 연속 반복해 query head h가 KV head h // n_rep를 쓰게 한다. (step 22)"""
+    raise NotImplementedError("TODO: step 22 (docs/22_*.md)")
+
+
+class GroupedQueryAttention(nn.Module):
+    """GQA (Ainslie et al. 2023): n_kv_head개의 K/V head를 n_head // n_kv_head개 query head가 공유. n_kv_head=1이면 MQA. (step 22)"""
+
+    def __init__(self, d_model, n_head, n_kv_head):
+        super().__init__()
+        assert d_model % n_head == 0 and n_head % n_kv_head == 0
+        self.n_head, self.n_kv_head, self.head_dim = n_head, n_kv_head, d_model // n_head
+        self.q = nn.Linear(d_model, d_model, bias=False)
+        self.kv = nn.Linear(d_model, 2 * n_kv_head * self.head_dim, bias=False)  # 앞 절반 K, 뒤 절반 V
+        self.proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x, cos, sin, cache=None):
+        """CausalSelfAttention과 같은 규약. cache에는 KV head n_kv_head개만 저장한다."""
+        B, T, C = x.shape
+        raise NotImplementedError("TODO: step 22 (docs/22_*.md)")
+        if cache is not None:
+            k, v = cache.update(k, v)
+        raise NotImplementedError("TODO: step 22 (docs/22_*.md)")
+
+
 class RMSNorm(nn.Module):
     """Zhang & Sennrich (2019). (step 09)"""
 
@@ -89,10 +114,13 @@ class SwiGLU(nn.Module):
 class Block(nn.Module):
     """Pre-norm Transformer block: x + Attn(Norm(x)), 이어서 x + FFN(Norm(x)). (step 09)"""
 
-    def __init__(self, d_model, n_head, ffn_hidden):
+    def __init__(self, d_model, n_head, ffn_hidden, n_kv_head=None):
         super().__init__()
         self.norm1 = RMSNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head)
+        if n_kv_head in (None, n_head):
+            self.attn = CausalSelfAttention(d_model, n_head)
+        else:
+            self.attn = GroupedQueryAttention(d_model, n_head, n_kv_head)
         self.norm2 = RMSNorm(d_model)
         self.ffn = SwiGLU(d_model, ffn_hidden)
 

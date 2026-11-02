@@ -16,6 +16,7 @@ class GPTConfig:
     d_model: int = 384
     ffn_hidden: int = 1024
     rope_base: float = 10000.0
+    n_kv_head: int | None = None  # None이면 MHA, 그 외 GQA (step 22)
 
 
 class GPT(nn.Module):
@@ -25,7 +26,9 @@ class GPT(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.blocks = nn.ModuleList(Block(cfg.d_model, cfg.n_head, cfg.ffn_hidden) for _ in range(cfg.n_layer))
+        self.blocks = nn.ModuleList(
+            Block(cfg.d_model, cfg.n_head, cfg.ffn_hidden, cfg.n_kv_head) for _ in range(cfg.n_layer)
+        )
         self.norm = RMSNorm(cfg.d_model)
         self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
         cos, sin = precompute_rope(cfg.d_model // cfg.n_head, cfg.block_size, cfg.rope_base)
@@ -65,8 +68,9 @@ class GPT(nn.Module):
     def new_caches(self, batch_size, max_len=None):
         p = self.tok_emb.weight
         hd = self.cfg.d_model // self.cfg.n_head
+        n_kv = self.cfg.n_kv_head or self.cfg.n_head
         return [
-            KVCache(batch_size, self.cfg.n_head, max_len or self.cfg.block_size, hd, p.device, p.dtype)
+            KVCache(batch_size, n_kv, max_len or self.cfg.block_size, hd, p.device, p.dtype)
             for _ in range(self.cfg.n_layer)
         ]
 
