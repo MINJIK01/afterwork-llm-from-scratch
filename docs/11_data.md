@@ -45,6 +45,8 @@ packing 결과와 dtype, `y`가 `x`를 한 칸 민 것인지, 창이 연속 구�
 
 ## 5. 확인 문제
 
+> 해설: [answers/11_data.md](answers/11_data.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. 문서 단위 padding과 packing의 계산 효율을 문서 길이 분포의 평균과 분산으로 비교하라.
 2. 상한을 `len(data) - block_size + 1`로 두면 어떤 경우에 오류가 나는가?
 3. packing 시 문서 경계를 넘는 attention을 막는 마스크를 `scaled_dot_product_attention`의 `mask`로 만들려면 어떤 정보가 필요한가?

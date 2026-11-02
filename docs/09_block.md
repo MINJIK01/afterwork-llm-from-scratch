@@ -53,6 +53,8 @@ attention $4d^2$ + FFN $3dh$ + RMSNorm 2개 $2d$.
 
 ## 5. 확인 문제
 
+> 해설: [answers/09_block.md](answers/09_block.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. SiLU의 도함수를 구하고, ReLU와 달리 음수 입력에서도 gradient가 0이 아닌 이유를 설명하라.
 2. pre-norm에서 final norm을 빼면 lm_head 입력의 스케일은 깊이에 따라 어떻게 되는가?
 3. RMSNorm의 출력은 입력의 어떤 변환에 불변인가? LayerNorm과 비교하라.

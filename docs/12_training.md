@@ -63,6 +63,8 @@ m5 프리셋은 4000 스텝 × 16,384 토큰 ≈ 65.5M 토큰, $C \approx 6 \tim
 
 ## 5. 확인 문제
 
+> 해설: [answers/12_training.md](answers/12_training.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. 마이크로배치 크기가 2, 3으로 다르면 단순 $1/K$ 가중은 어떤 가중 평균이 되는가?
 2. 같은 토큰 수에서 배치 크기를 키우고 스텝 수를 줄이면 어떤 trade-off가 있는가? (critical batch size, McCandlish et al. 2018)
 3. 학습 로그의 `tok/s`로 이 Mac의 MFU를 추정하라.

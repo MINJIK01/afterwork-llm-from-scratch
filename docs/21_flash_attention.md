@@ -61,6 +61,8 @@ PyTorch 수준의 Python 루프는 SRAM을 직접 제어하지 못하므로 각 
 
 ## 5. 확인 문제
 
+> 해설: [answers/21_flash_attention.md](answers/21_flash_attention.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. 두 부분 상태 $(m_1, l_1, a_1)$, $(m_2, l_2, a_2)$를 합치는 식을 쓰라. 이 식이 key 축을 여러 GPU/스레드 블록에 나눠 병렬 계산할 때(Flash-Decoding) 어떻게 쓰이는가?
 2. $T = 4096$, $d = 64$, fp16일 때 표준 구현의 $S$ 행렬 크기(head 하나)와, SRAM 100KB에 $Q$ 블록과 $K, V$ 블록을 올릴 때 가능한 블록 크기를 추정하라.
 3. backward에서 $P$를 저장하는 대신 다시 계산하면 FLOPs는 늘어나는데도 전체 시간이 줄어드는 이유를 설명하라.

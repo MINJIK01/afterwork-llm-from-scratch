@@ -87,6 +87,8 @@ $$\mathcal L = \mathcal L^{CLIP} + \beta_{KL}\,\hat{\mathrm{KL}}_{k_3}.$$
 
 ## 5. 확인 문제
 
+> 해설: [answers/18_grpo.md](answers/18_grpo.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. $G = 1$이면 GRPO advantage는 어떻게 되는가? $G$를 키우는 것의 비용과 이점은?
 2. 보상이 0/1이고 그룹 내 성공 비율이 $q$일 때, 성공 샘플과 실패 샘플의 advantage를 $q$로 표현하라. $q$가 작을 때 성공 샘플의 가중치는?
 3. KL penalty를 loss에 더하는 방식과 보상에서 빼는 방식($R - \beta\log\frac{\pi}{\pi_{ref}}$)의 gradient 차이를 설명하라.

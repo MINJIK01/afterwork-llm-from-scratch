@@ -61,6 +61,8 @@ InstructGPT식 RLHF는 (1) 사람 선호 라벨로 RM 학습 → (2) RM을 보�
 
 ## 5. 확인 문제
 
+> 해설: [answers/16_reward_model.md](answers/16_reward_model.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. 선호 쌍이 아니라 $K$개 응답의 순위가 주어지면 BT를 어떻게 확장하는가? (Plackett–Luce)
 2. RM 학습 데이터에서 항상 긴 응답이 선호되었다면 RM은 무엇을 학습할 위험이 있는가?
 3. 2.3의 $\max(-z,0) + \log(1+e^{-|z|})$ 구현을 직접 작성해 $z = 0$에서 gradient를 확인해 보라.

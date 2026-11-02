@@ -59,6 +59,8 @@ reward model(step 16)은 lm_head 대신 스칼라 head를 붙이므로 final nor
 
 ## 5. 확인 문제
 
+> 해설: [answers/10_gpt.md](answers/10_gpt.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. tying을 하면 임베딩 $E$의 gradient는 어떤 두 경로의 합이 되는가?
 2. $L = 24$일 때 residual 출력 투영의 초기 표준편차는? 이를 적용하지 않으면 초기 residual stream의 분산은 몇 배가 되는가?
 3. m5 프리셋에서 $T = 256$일 때 토큰당 학습 FLOPs 중 attention 항의 비율은?

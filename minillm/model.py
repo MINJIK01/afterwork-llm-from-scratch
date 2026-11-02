@@ -36,7 +36,9 @@ class GPT(nn.Module):
         self.register_buffer("rope_sin", sin, persistent=False)
         # 1) lm_head와 tok_emb 가중치 공유  2) 모든 Linear/Embedding ~ N(0, 0.02²)
         # 3) residual로 더해지는 출력 투영(attn.proj, ffn.w_down) ~ N(0, (0.02/sqrt(2·n_layer))²)
+        # BEGIN TODO (step 10)
         raise NotImplementedError("TODO: step 10 (docs/10_*.md)")
+        # END TODO
 
     def hidden(self, idx, caches=None):
         """idx (B, T) → 최종 RMSNorm까지 통과한 hidden (B, T, d_model). caches: 레이어별 KVCache 리스트."""
@@ -44,11 +46,15 @@ class GPT(nn.Module):
         start = caches[0].pos if caches else 0
         assert start + T <= self.cfg.block_size, "block_size 초과"
         cos, sin = self.rope_cos[start : start + T], self.rope_sin[start : start + T]
+        # BEGIN TODO (step 10)
         raise NotImplementedError("TODO: step 10 (docs/10_*.md)")
+        # END TODO
 
     def forward(self, idx, targets=None, caches=None):
         """logits (B, T, V)와 loss(targets가 있으면 평균 cross-entropy, 없으면 None)."""
+        # BEGIN TODO (step 10)
         raise NotImplementedError("TODO: step 10 (docs/10_*.md)")
+        # END TODO
 
     def new_caches(self, batch_size, max_len=None):
         p = self.tok_emb.weight

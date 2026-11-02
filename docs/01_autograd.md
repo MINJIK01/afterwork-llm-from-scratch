@@ -57,6 +57,8 @@ $\bar u$를 확정하려면 $u$의 모든 소비자 $v$의 $\bar v$가 먼저 �
 
 ## 5. 확인 문제
 
+> 해설: [answers/01_autograd.md](answers/01_autograd.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. `+=` 대신 `=`로 구현하면 `b = a * a + a`의 `a.grad`는 얼마가 나오는가?
 2. `backward()`를 두 번 연속 호출하면 어떤 일이 생기는가? PyTorch에서 `optimizer.zero_grad()`가 필요한 이유와 연결해 설명하라.
 3. 출력이 $m$개, 입력이 $n$개인 함수의 전체 Jacobian을 구할 때 forward/reverse mode 각각 몇 번의 pass가 필요한가?

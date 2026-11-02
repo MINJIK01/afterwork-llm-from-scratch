@@ -59,6 +59,8 @@ PyTorch 구현 순서: `p.mul_(1 - lr*wd)` → $m, v$ 갱신 → 업데이트. �
 
 ## 5. 확인 문제
 
+> 해설: [answers/04_optimizer.md](answers/04_optimizer.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. $\epsilon$을 $\sqrt{\hat v + \epsilon}$처럼 안쪽에 넣으면 gradient가 매우 작은 좌표에서 업데이트 크기가 어떻게 달라지는가?
 2. Adam의 업데이트 크기는 loss를 상수배($L \to kL$)해도 거의 변하지 않는다. 왜인가? SGD는 어떤가?
 3. Gradient accumulation(step 12)과 clipping을 함께 쓸 때 clipping은 각 마이크로배치마다 해야 하는가, 누적 후 한 번 해야 하는가?

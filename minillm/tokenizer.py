@@ -8,12 +8,16 @@ PAT = re.compile(r"""'(?:s|t|re|ve|m|ll|d)| ?[A-Za-z]+| ?[0-9]+| ?[^\sA-Za-z0-9]
 
 def get_pair_counts(words):
     """words: {토큰 id 튜플: 빈도}. 인접 pair별 (빈도 가중) 등장 횟수 Counter. (step 05)"""
+    # BEGIN TODO (step 05)
     raise NotImplementedError("TODO: step 05 (docs/05_*.md)")
+    # END TODO
 
 
 def merge(ids, pair, new_id):
     """ids에서 pair가 연속으로 나오는 곳을 왼쪽부터 겹치지 않게 new_id로 치환한 튜플. (step 05)"""
+    # BEGIN TODO (step 05)
     raise NotImplementedError("TODO: step 05 (docs/05_*.md)")
+    # END TODO
 
 
 class BPETokenizer:
@@ -43,13 +47,17 @@ class BPETokenizer:
             text = text.replace(s, " ")
         num_merges = vocab_size - 256 - len(special_tokens)
         merges = {}
+        # BEGIN TODO (step 05)
         raise NotImplementedError("TODO: step 05 (docs/05_*.md)")
+        # END TODO
         n = 256 + len(merges)
         return cls(merges, {s: n + j for j, s in enumerate(special_tokens)})
 
     def _encode_chunk(self, chunk):
         """bytes → ids. 학습 때 먼저 만들어진 merge(작은 id)부터 적용. (step 05)"""
+        # BEGIN TODO (step 05)
         raise NotImplementedError("TODO: step 05 (docs/05_*.md)")
+        # END TODO
 
     def encode(self, text):
         out = []
@@ -65,7 +73,9 @@ class BPETokenizer:
 
     def decode(self, ids):
         """ids → str. 불완전한 UTF-8 시퀀스는 replacement 문자로. (step 05)"""
+        # BEGIN TODO (step 05)
         raise NotImplementedError("TODO: step 05 (docs/05_*.md)")
+        # END TODO
 
     def save(self, path):
         with open(path, "w") as f:

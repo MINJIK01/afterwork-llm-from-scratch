@@ -58,6 +58,8 @@ greedy, top-k 비율 보존, top-p 경계 사례, 20000회 샘플링 빈도가 s
 
 ## 5. 확인 문제
 
+> 해설: [answers/13_sampling.md](answers/13_sampling.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. top-p = 1, top-k = None, τ = 1이면 어떤 분포에서 샘플링하는가?
 2. τ < 1과 top-p를 함께 쓸 때 순서를 바꾸면(top-p 먼저) 결과가 달라지는가?
 3. repetition penalty(이미 나온 토큰의 logit을 낮춤)를 `filter_probs` 앞단에 추가한다면 어떤 형태가 되는가?

@@ -1,4 +1,3 @@
-import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -6,9 +5,12 @@ from pathlib import Path
 import pytest
 import torch
 
-# MINILLM_SOLUTIONS=1 이면 정답 패키지(solutions/minillm)를 대상으로 테스트한다.
+# 대상 패키지 선택: 기본 minillm/, MINILLM_SOLUTIONS=1 이면 정답, MINILLM_ONLY=NN 이면 해당 step만 본인 구현 (tools/hybrid.py)
 ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT / "solutions" if os.environ.get("MINILLM_SOLUTIONS") == "1" else ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
+from hybrid import minillm_path  # noqa: E402
+
+sys.path.insert(0, str(minillm_path()))
 
 
 @pytest.fixture

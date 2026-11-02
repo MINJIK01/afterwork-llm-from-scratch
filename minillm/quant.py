@@ -7,12 +7,16 @@ def quantize(w, bits=8, group_size=None):
     """대칭 균일 양자화. w (out, in)을 입력 축으로 group_size씩 묶어(None이면 행 전체) 그룹별 scale = max|w| / qmax,
     q = clamp(round(w / scale), -qmax, qmax), qmax = 2^(bits-1) - 1.
     (q int8 (out, in), scale float (out, in // group_size, 1)) 반환. (step 19)"""
+    # BEGIN TODO (step 19)
     raise NotImplementedError("TODO: step 19 (docs/19_*.md)")
+    # END TODO
 
 
 def dequantize(q, scale):
     """q (out, in), scale (out, n_groups, 1) → float 가중치 (out, in). (step 19)"""
+    # BEGIN TODO (step 19)
     raise NotImplementedError("TODO: step 19 (docs/19_*.md)")
+    # END TODO
 
 
 class QuantLinear(nn.Module):

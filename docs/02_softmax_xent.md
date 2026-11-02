@@ -58,6 +58,8 @@ $$\frac{\partial L}{\partial z_i} = -\frac{\partial \log p_y}{\partial z_i} = p_
 
 ## 5. 확인 문제
 
+> 해설: [answers/02_softmax_xent.md](answers/02_softmax_xent.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. $p_y \to 1$일 때와 $p_y \to 0$일 때 $\partial L/\partial z_y$는 각각 어디로 가는가? 학습 초기와 후기의 gradient 크기와 연결해 설명하라.
 2. fp16(최댓값 65504)에서 max-subtraction 없이 softmax를 계산하면 $z$가 몇 이상일 때 overflow하는가?
 3. label smoothing($y$를 $(1-\epsilon)\delta_y + \epsilon/C$로 대체)을 적용하면 gradient 식은 어떻게 바뀌는가?

@@ -54,6 +54,8 @@ forward 본문은 마커상 두 구간으로 나뉘어 있다. 1–3을 첫 구�
 
 ## 5. 확인 문제
 
+> 해설: [answers/08_causal_attention.md](answers/08_causal_attention.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. causal mask 없이 학습한 모델은 학습 loss가 매우 낮게 나온다. 이유는 무엇이고 생성 시 어떤 일이 벌어지는가?
 2. Multi-Query Attention(K, V head 1개)과 Grouped-Query Attention(K, V head $G$개)의 파라미터 수와 KV cache 크기(step 14)를 $H$, $G$, $d_h$로 표현하라.
 3. 2.3의 마스크에서 diagonal 오프셋을 0으로 두면 decode 단계($T = 1$)에서 무엇이 잘못되는가?

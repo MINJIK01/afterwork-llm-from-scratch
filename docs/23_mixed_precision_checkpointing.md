@@ -79,6 +79,8 @@ AdamW + fp32 학습에서 파라미터당 메모리는 파라미터 4B + gradien
 
 ## 6. 확인 문제
 
+> 해설: [answers/23_mixed_precision_checkpointing.md](answers/23_mixed_precision_checkpointing.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. bf16에서 $1 + 2^{-8}$과 $1 + 3\cdot2^{-8}$은 각각 무엇으로 반올림되는가? 2.2의 식으로 직접 계산하라.
 2. m5 프리셋($N$=12.2M)의 파라미터·gradient·Adam 상태 메모리를 계산하고, $B$=32, $T$=256일 때 attention 확률 행렬($B \cdot H \cdot T^2$, fp32)의 레이어당 메모리와 비교하라.
 3. 모든 블록을 checkpoint하면 FLOPs가 몇 % 늘어나는가? 같은 메모리로 배치를 2배 키울 수 있다면 시간당 처리 토큰은 어떻게 되는가?

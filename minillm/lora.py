@@ -17,12 +17,16 @@ class LoRALinear(nn.Module):
         nn.init.kaiming_uniform_(self.A, a=math.sqrt(5))
 
     def forward(self, x):
+        # BEGIN TODO (step 24)
         raise NotImplementedError("TODO: step 24 (docs/24_*.md)")
+        # END TODO
 
     @torch.no_grad()
     def merge(self):
         """W + (α/r)·B A를 가중치로 갖는 일반 nn.Linear를 반환 (추론 시 추가 비용 0)."""
+        # BEGIN TODO (step 24)
         raise NotImplementedError("TODO: step 24 (docs/24_*.md)")
+        # END TODO
 
 
 TARGETS = ("qkv", "q", "kv", "proj", "w_gate", "w_up", "w_down")

@@ -64,6 +64,8 @@ backward에 필요한 값은 $\hat x$, rstd, $\gamma$뿐이므로 forward에서 
 
 ## 5. 확인 문제
 
+> 해설: [answers/03_manual_backward.md](answers/03_manual_backward.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. $Y = XW$ (전치 없음) 규약에서는 $dX$, $dW$가 어떻게 바뀌는가?
 2. RMSNorm(step 09) $y = \gamma \odot x / \mathrm{rms}(x)$의 backward를 같은 방식으로 유도하라. 어떤 항이 사라지는가?
 3. BatchNorm은 정규화 축이 배치 축이다. 같은 유도에서 무엇이 달라지며, 추론 시 왜 running statistics가 필요한가?

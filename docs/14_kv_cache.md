@@ -56,6 +56,8 @@ $$\text{KV bytes} = 2 \cdot L \cdot B \cdot H \cdot d_h \cdot T \cdot \text{byte
 
 ## 5. 확인 문제
 
+> 해설: [answers/14_kv_cache.md](answers/14_kv_cache.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. m5 프리셋 모델($L$=6, $H$=6, $d_h$=64, $T$=256, fp32)의 KV cache 크기를 계산하고 가중치 크기(12.2M × 4B)와 비교하라.
 2. 배치 생성에서 프롬프트 길이가 서로 다르면 이 구현(공통 `pos`)에 어떤 문제가 생기는가? left padding과 attention mask로 어떻게 해결하는가?
 3. 이 모델에서 cache 사용 시 속도 향상이 이론값보다 작게 나올 수 있는 이유는? (힌트: 작은 모델에서 커널 실행 오버헤드)

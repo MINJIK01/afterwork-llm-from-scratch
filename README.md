@@ -6,25 +6,61 @@
 
 ```
 docs/NN_*.md          단계별 이론 (유도, 구현 가이드, 확인 문제, 참고문헌)
-minillm/              실습 대상 패키지. TODO 위치에 raise NotImplementedError
+docs/answers/NN_*.md  확인 문제 해설 (먼저 직접 풀어 본 뒤 확인)
+minillm/              실습 대상 패키지. # BEGIN TODO ~ # END TODO 구간을 구현
 tests/test_NN_*.py    단계별 자동 채점 (PyTorch 레퍼런스/autograd와 비교)
 scripts/              데이터 준비, 학습, 정렬, 벤치마크 실행 스크립트
 solutions/minillm/    정답 구현 (막혔을 때만 참고)
+tools/hybrid.py       채점 대상 패키지 선택 (기본 / 정답 / 단독 채점)
 tools/make_stubs.py   solutions에서 minillm 스텁을 다시 생성 (minillm 덮어씀)
 ```
 
 ## 진행 방법
 
 1. `docs/NN_*.md`를 읽는다.
-2. `minillm/`에서 `NotImplementedError("TODO: step NN ...")`를 찾아 구현한다.
+2. `minillm/`에서 해당 step의 TODO 구간을 찾아, `raise NotImplementedError(...)` 줄을 지우고 그 자리에 구현한다.
 3. `pytest tests/test_NN_*.py -v`로 채점한다.
-4. 막히면 `solutions/minillm/`의 같은 위치(`# BEGIN SOLUTION (step NN)`)를 참고한다.
-
-뒤 단계는 앞 단계 구현을 사용하므로 순서대로 진행한다(예: step 06 attention은 step 02의 `softmax`를 쓴다).
+4. 확인 문제를 풀고 `docs/answers/NN_*.md`로 확인한다.
+5. 막히면 `solutions/minillm/`의 같은 위치(`# BEGIN SOLUTION (step NN)`)를 참고한다.
 
 ```bash
-grep -rn "TODO: step 05" minillm/
+grep -rn "BEGIN TODO (step 05)" minillm/
 ```
+
+구현은 반드시 마커 사이에 작성하고 마커 줄은 지우지 않는다. 단독 채점이 이 마커로 구현 위치를 찾는다.
+
+```python
+        # BEGIN TODO (step 01)
+        self.grad += out.grad      # ← 여기에 구현
+        other.grad += out.grad
+        # END TODO
+```
+
+### 앞 단계 없이 한 단계만 채점하기
+
+뒤 단계는 앞 단계 구현을 사용한다(예: step 06 attention은 step 02의 `softmax`를 쓴다). 순서대로 진행하는 것이 기본이지만, `MINILLM_ONLY`를 지정하면 그 step의 TODO 구간만 본인 코드로, 나머지는 정답으로 채운 패키지(`.grade/`에 자동 생성)로 채점한다.
+
+```bash
+MINILLM_ONLY=08 pytest tests/test_08_causal_attention.py -v
+```
+
+여러 step을 함께 지정할 수도 있다.
+
+```bash
+MINILLM_ONLY=6,7,8 pytest tests/test_06_attention.py tests/test_07_rope.py tests/test_08_causal_attention.py -v
+```
+
+스크립트에도 같은 방식이 적용된다. 예를 들어 step 12만 구현한 상태로 실제 학습을 돌려 볼 수 있다.
+
+```bash
+MINILLM_ONLY=12 python scripts/pretrain.py --preset tiny
+```
+
+| 환경 변수 | 사용되는 코드 |
+|---|---|
+| (없음) | `minillm/` 전체 (본인 구현) |
+| `MINILLM_ONLY=NN[,MM...]` | 지정 step만 `minillm/`, 나머지는 `solutions/` |
+| `MINILLM_SOLUTIONS=1` | `solutions/` 전체 (정답) |
 
 ## 커리큘럼
 

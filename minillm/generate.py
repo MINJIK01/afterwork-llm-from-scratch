@@ -6,12 +6,16 @@ from .functional import softmax
 def filter_probs(logits, top_k=None, top_p=None):
     """logits (B, V) → top-k, nucleus(top-p) 필터링 후 재정규화한 확률 (B, V).
     top-p: 확률 내림차순 누적합이 top_p에 처음 도달하는 토큰까지 포함하는 최소 집합. (step 13)"""
+    # BEGIN TODO (step 13)
     raise NotImplementedError("TODO: step 13 (docs/13_*.md)")
+    # END TODO
 
 
 def sample_next(logits, temperature=1.0, top_k=None, top_p=None, generator=None):
     """logits (B, V) → 다음 토큰 (B,). temperature == 0이면 greedy(argmax). (step 13)"""
+    # BEGIN TODO (step 13)
     raise NotImplementedError("TODO: step 13 (docs/13_*.md)")
+    # END TODO
 
 
 @torch.no_grad()
@@ -26,7 +30,9 @@ def generate(model, idx, max_new_tokens, temperature=1.0, top_k=None, top_p=None
     done = torch.zeros(idx.shape[0], dtype=torch.bool, device=idx.device)
     inp = idx
     for _ in range(max_new_tokens):
+        # BEGIN TODO (step 13)
         raise NotImplementedError("TODO: step 13 (docs/13_*.md)")
+        # END TODO
         if eos_id is not None:
             nxt = nxt.masked_fill(done, eos_id)
             done |= nxt == eos_id
@@ -48,7 +54,9 @@ def speculative_accept(draft_tokens, q, p, generator=None):
     draft_tokens (γ,): 드래프트 제안, q (γ, V): 각 제안 시점의 드래프트 분포, p (γ+1, V): 같은 시점들 + 다음 1칸의 타깃 분포.
     i번째 제안 x는 확률 min(1, p_i(x)/q_i(x))로 수락. 거절되면 norm(max(0, p_i - q_i))에서 하나 뽑고 종료.
     전부 수락되면 p_γ에서 보너스 토큰 1개를 뽑는다. 확정된 토큰 list[int] (길이 1..γ+1) 반환. (step 20)"""
+    # BEGIN TODO (step 20)
     raise NotImplementedError("TODO: step 20 (docs/20_*.md)")
+    # END TODO
 
 
 @torch.no_grad()
@@ -64,5 +72,7 @@ def speculative_generate(target, draft, idx, max_new_tokens, gamma=4, temperatur
     tc, dc = target.new_caches(1), draft.new_caches(1)
     seq, accepted = idx[0].tolist(), []
     while len(seq) + gamma + 1 <= limit:
+        # BEGIN TODO (step 20)
         raise NotImplementedError("TODO: step 20 (docs/20_*.md)")
+        # END TODO
     return torch.tensor([seq[: T0 + max_new_tokens]], device=idx.device), accepted

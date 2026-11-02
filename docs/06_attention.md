@@ -54,6 +54,8 @@ attention은 key/value의 순서를 바꿔도 결과가 같고, query 순서를 
 
 ## 5. 확인 문제
 
+> 해설: [answers/06_attention.md](answers/06_attention.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. fp16에서 $-\infty$ 대신 $-10^4$을 쓰면 어떤 문제가 생길 수 있는가? 반대로 $-\infty$를 쓸 때 주의할 점은?
 2. $d_k$를 키우면 표현력은 늘지만 계산은 어떻게 변하는가? 헤드 수를 늘릴 때(step 08)와 비교하라.
 3. online softmax(Milakov & Gimelshein 2018)가 score 행렬 전체 없이 정확한 softmax 가중합을 계산할 수 있는 이유를 설명하라.

@@ -9,7 +9,9 @@ def bf16_round(x):
     """fp32 → bf16 → fp32 변환을 비트 연산으로 재현 (round-to-nearest-even). NaN은 고려하지 않는다.
     bf16은 fp32 비트열의 상위 16비트이므로, 하위 16비트를 반올림해 버리면 된다. (step 23)"""
     bits = x.float().contiguous().view(torch.int32)
+    # BEGIN TODO (step 23)
     raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
+    # END TODO
 
 
 class LossScaler:
@@ -27,12 +29,16 @@ class LossScaler:
     def unscale_(self, params):
         """모든 grad를 scale로 나누고, inf/NaN이 하나라도 있으면 True 반환."""
         grads = [p.grad for p in params if p.grad is not None]
+        # BEGIN TODO (step 23)
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
+        # END TODO
 
     def update(self, found_inf):
         """inf/NaN이면 scale에 backoff_factor를 곱하고 카운터 초기화.
         아니면 연속 성공 횟수를 세고, growth_interval번마다 scale에 growth_factor를 곱한다."""
+        # BEGIN TODO (step 23)
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
+        # END TODO
 
 
 def train_step_amp(model, optimizer, batches, grad_clip=1.0, dtype=torch.bfloat16, scaler=None):
@@ -41,7 +47,9 @@ def train_step_amp(model, optimizer, batches, grad_clip=1.0, dtype=torch.bfloat1
     파라미터·gradient·optimizer 상태는 fp32 그대로 둔다(master weights). (평균 loss, grad norm) 반환. (step 23)"""
     device_type = next(model.parameters()).device.type
     params = [p for p in model.parameters() if p.requires_grad]
+    # BEGIN TODO (step 23)
     raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
+    # END TODO
 
 
 class CheckpointFunction(torch.autograd.Function):
@@ -52,14 +60,18 @@ class CheckpointFunction(torch.autograd.Function):
     def forward(ctx, fn, *args):
         ctx.device_type = args[0].device.type
         ctx.autocast = (torch.is_autocast_enabled(ctx.device_type), torch.get_autocast_dtype(ctx.device_type))
+        # BEGIN TODO (step 23)
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
+        # END TODO
 
     @staticmethod
     def backward(ctx, grad_out):
         """저장한 입력을 detach해 leaf로 만든 뒤 enable_grad + 저장된 autocast 상태 아래에서 fn을 재실행하고
         torch.autograd.backward(out, grad_out)로 파라미터 grad를 누적. 반환: (fn 자리 None, 각 입력의 grad 또는 None)."""
         enabled, dtype = ctx.autocast
+        # BEGIN TODO (step 23)
         raise NotImplementedError("TODO: step 23 (docs/23_*.md)")
+        # END TODO
 
 
 def checkpoint(fn, *args):

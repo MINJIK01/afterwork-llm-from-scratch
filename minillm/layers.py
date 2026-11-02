@@ -9,17 +9,23 @@ from .functional import softmax
 def scaled_dot_product_attention(q, k, v, mask=None):
     """softmax(QK^T / sqrt(d_k)) V.
     q (..., Tq, d), k (..., Tk, d), v (..., Tk, dv). mask: bool, (..., Tq, Tk)로 broadcast, True=참조 허용. (step 06)"""
+    # BEGIN TODO (step 06)
     raise NotImplementedError("TODO: step 06 (docs/06_*.md)")
+    # END TODO
 
 
 def precompute_rope(head_dim, max_seq_len, base=10000.0):
     """θ_i = base^(-2i/head_dim), 각도 m·θ_i의 cos, sin. 각각 (max_seq_len, head_dim // 2). (step 07)"""
+    # BEGIN TODO (step 07)
     raise NotImplementedError("TODO: step 07 (docs/07_*.md)")
+    # END TODO
 
 
 def apply_rope(x, cos, sin):
     """x (..., T, head_dim)의 인접 쌍 (x[2i], x[2i+1])을 위치별 각도로 회전. cos/sin (T, head_dim // 2). (step 07)"""
+    # BEGIN TODO (step 07)
     raise NotImplementedError("TODO: step 07 (docs/07_*.md)")
+    # END TODO
 
 
 class KVCache:
@@ -32,12 +38,16 @@ class KVCache:
 
     def update(self, k, v):
         """새 k, v (B, H, T, hd)를 pos 위치부터 기록하고 pos를 T만큼 전진. 지금까지의 전체 K, V (B, H, pos, hd) 반환."""
+        # BEGIN TODO (step 14)
         raise NotImplementedError("TODO: step 14 (docs/14_*.md)")
+        # END TODO
 
 
 def kv_cache_bytes(n_layer, n_head, head_dim, batch_size, seq_len, bytes_per_elem):
     """전체 레이어 KV cache가 차지하는 바이트 수. (step 14)"""
+    # BEGIN TODO (step 14)
     raise NotImplementedError("TODO: step 14 (docs/14_*.md)")
+    # END TODO
 
 
 class CausalSelfAttention(nn.Module):
@@ -55,15 +65,21 @@ class CausalSelfAttention(nn.Module):
         cache가 있으면 K/V를 cache에 기록하고 과거 K/V 전체를 참조한다.
         query i의 절대 위치는 Tk - T + i (Tk = 참조 가능한 key 수)이므로 key j <= Tk - T + i만 허용."""
         B, T, C = x.shape
+        # BEGIN TODO (step 08)
         raise NotImplementedError("TODO: step 08 (docs/08_*.md)")
+        # END TODO
         if cache is not None:
             k, v = cache.update(k, v)
+        # BEGIN TODO (step 08)
         raise NotImplementedError("TODO: step 08 (docs/08_*.md)")
+        # END TODO
 
 
 def repeat_kv(x, n_rep):
     """(B, Hkv, T, hd) → (B, Hkv·n_rep, T, hd). 각 KV head를 n_rep번 연속 반복해 query head h가 KV head h // n_rep를 쓰게 한다. (step 22)"""
+    # BEGIN TODO (step 22)
     raise NotImplementedError("TODO: step 22 (docs/22_*.md)")
+    # END TODO
 
 
 class GroupedQueryAttention(nn.Module):
@@ -80,10 +96,14 @@ class GroupedQueryAttention(nn.Module):
     def forward(self, x, cos, sin, cache=None):
         """CausalSelfAttention과 같은 규약. cache에는 KV head n_kv_head개만 저장한다."""
         B, T, C = x.shape
+        # BEGIN TODO (step 22)
         raise NotImplementedError("TODO: step 22 (docs/22_*.md)")
+        # END TODO
         if cache is not None:
             k, v = cache.update(k, v)
+        # BEGIN TODO (step 22)
         raise NotImplementedError("TODO: step 22 (docs/22_*.md)")
+        # END TODO
 
 
 class RMSNorm(nn.Module):
@@ -95,7 +115,9 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
+        # BEGIN TODO (step 09)
         raise NotImplementedError("TODO: step 09 (docs/09_*.md)")
+        # END TODO
 
 
 class SwiGLU(nn.Module):
@@ -108,7 +130,9 @@ class SwiGLU(nn.Module):
         self.w_down = nn.Linear(hidden, d_model, bias=False)
 
     def forward(self, x):
+        # BEGIN TODO (step 09)
         raise NotImplementedError("TODO: step 09 (docs/09_*.md)")
+        # END TODO
 
 
 class Block(nn.Module):
@@ -125,4 +149,6 @@ class Block(nn.Module):
         self.ffn = SwiGLU(d_model, ffn_hidden)
 
     def forward(self, x, cos, sin, cache=None):
+        # BEGIN TODO (step 09)
         raise NotImplementedError("TODO: step 09 (docs/09_*.md)")
+        # END TODO

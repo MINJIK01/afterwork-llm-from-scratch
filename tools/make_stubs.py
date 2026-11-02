@@ -1,4 +1,5 @@
-"""solutions/minillm의 BEGIN/END SOLUTION 구간을 비워 minillm/ 실습 스텁을 생성한다.
+"""solutions/minillm의 BEGIN/END SOLUTION 구간을 BEGIN/END TODO 구간으로 바꿔 minillm/ 실습 스텁을 생성한다.
+TODO 마커는 단독 채점(tools/hybrid.py, MINILLM_ONLY)이 구현 위치를 찾는 데 쓰이므로 지우지 않는다.
 
 주의: minillm/의 기존 파일을 덮어쓴다. 작성 중인 구현이 있다면 먼저 백업할 것.
 사용: python tools/make_stubs.py
@@ -21,7 +22,11 @@ def stub(src):
             continue
         if m := BEGIN.match(line):
             indent, step = m.groups()
-            out.append(f'{indent}raise NotImplementedError("TODO: step {step} (docs/{step}_*.md)")\n')
+            out.append(
+                f"{indent}# BEGIN TODO (step {step})\n"
+                f'{indent}raise NotImplementedError("TODO: step {step} (docs/{step}_*.md)")\n'
+                f"{indent}# END TODO\n"
+            )
             skipping = True
         else:
             out.append(line)

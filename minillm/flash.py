@@ -9,7 +9,9 @@ def online_logsumexp(x, chunk_size):
     m = torch.full(x.shape[:-1], float("-inf"), dtype=x.dtype, device=x.device)
     s = torch.zeros(x.shape[:-1], dtype=x.dtype, device=x.device)
     for c in x.split(chunk_size, dim=-1):
+        # BEGIN TODO (step 21)
         raise NotImplementedError("TODO: step 21 (docs/21_*.md)")
+        # END TODO
     return m + s.log()
 
 
@@ -25,5 +27,7 @@ def flash_attention(q, k, v, causal=True, block_size=64):
     q_pos = torch.arange(Tq, device=q.device) + (Tk - Tq)
     for start in range(0, Tk, block_size):
         kb, vb = k[..., start : start + block_size, :], v[..., start : start + block_size, :]
+        # BEGIN TODO (step 21)
         raise NotImplementedError("TODO: step 21 (docs/21_*.md)")
+        # END TODO
     return acc / l

@@ -80,6 +80,8 @@ $c_d/c_t$가 작고 $\alpha$가 클수록 유리하다. 대형 타깃(예: 70B)�
 
 ## 5. 확인 문제
 
+> 해설: [answers/20_speculative_decoding.md](answers/20_speculative_decoding.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. 드래프트와 타깃의 temperature가 다르면 정확성 증명의 어느 부분이 깨지는가? (힌트: $q$는 실제로 드래프트가 샘플링한 분포여야 한다.)
 2. $c_d/c_t = 0.1$, $\alpha = 0.7$일 때 speedup을 최대화하는 $\gamma$를 구하라.
 3. 드래프트 모델 없이 타깃 모델에 여러 개의 예측 head를 붙이는 Medusa, 또는 n-gram 기반 후보를 쓰는 방법과 비교해 장단점을 정리하라.

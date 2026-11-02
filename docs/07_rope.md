@@ -65,6 +65,8 @@ $$\theta_i = \mathrm{base}^{-2i/d},\quad i = 0, \dots, d/2 - 1,\quad \mathrm{bas
 
 ## 5. 확인 문제
 
+> 해설: [answers/07_rope.md](answers/07_rope.md) — 먼저 직접 풀어 본 뒤 확인할 것.
+
 1. $v$에도 RoPE를 적용하면 출력에 어떤 변화가 생기는가? 상대 위치 성질이 유지되는가?
 2. $\mathrm{base}$를 키우면 가장 느린 주파수의 파장은 어떻게 변하는가? 긴 문맥 확장 기법들이 base를 조정하는 이유와 연결하라.
 3. sinusoidal 절대 위치 인코딩을 더하는 방식에서 $q_m^\top k_n$을 전개하면 어떤 항들이 생기는가? 상대 위치에만 의존하지 않는 항은 무엇인가?

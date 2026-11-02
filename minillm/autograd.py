@@ -16,7 +16,9 @@ class Value:
         out = Value(self.data + other.data, (self, other), "+")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
@@ -26,7 +28,9 @@ class Value:
         out = Value(self.data * other.data, (self, other), "*")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
@@ -36,7 +40,9 @@ class Value:
         out = Value(self.data**k, (self,), f"**{k}")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
@@ -45,7 +51,9 @@ class Value:
         out = Value(math.exp(self.data), (self,), "exp")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
@@ -54,7 +62,9 @@ class Value:
         out = Value(math.log(self.data), (self,), "log")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
@@ -63,7 +73,9 @@ class Value:
         out = Value(math.tanh(self.data), (self,), "tanh")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
@@ -72,14 +84,18 @@ class Value:
         out = Value(max(0.0, self.data), (self,), "relu")
 
         def _backward():
+            # BEGIN TODO (step 01)
             raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+            # END TODO
 
         out._backward = _backward
         return out
 
     def backward(self):
         """self를 루트로 위상 정렬 역순으로 _backward 호출. 루트의 grad는 1."""
+        # BEGIN TODO (step 01)
         raise NotImplementedError("TODO: step 01 (docs/01_*.md)")
+        # END TODO
 
     def __neg__(self):
         return self * -1

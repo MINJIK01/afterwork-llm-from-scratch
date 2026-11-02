@@ -1,11 +1,13 @@
-import os
 import re
 import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "solutions" if os.environ.get("MINILLM_SOLUTIONS") == "1" else ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
+from hybrid import minillm_path  # noqa: E402
+
+sys.path.insert(0, str(minillm_path()))
 
 import torch  # noqa: E402
 
@@ -81,13 +83,14 @@ def prompt_text(keyword):
 
 
 def pick_keyword(doc, rng):
-    words = [w.lower() for w in re.findall(r"[A-Za-z]{4,}", doc) if w.lower() not in STOPWORDS]
+    """문서 속 4글자 이상 단어 중 하나. 불용어와 평가 키워드는 제외해 평가가 학습에 쓰이지 않은 키워드로 이뤄지게 한다."""
+    excluded = STOPWORDS | set(EVAL_KEYWORDS)
+    words = [w.lower() for w in re.findall(r"[A-Za-z]{4,}", doc) if w.lower() not in excluded]
     return rng.choice(words) if words else None
 
 
 def keyword_pool(docs, rng, n):
-    pool = {pick_keyword(d, rng) for d in docs[: n * 5]} - set(EVAL_KEYWORDS) - {None}
-    return sorted(pool)
+    return sorted({pick_keyword(d, rng) for d in docs[: n * 5]} - {None})
 
 
 def reward(text, ended, keyword):

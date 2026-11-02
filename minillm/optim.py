@@ -21,7 +21,9 @@ class AdamW(torch.optim.Optimizer):
                     state["t"] = 0
                     state["m"] = torch.zeros_like(p)
                     state["v"] = torch.zeros_like(p)
+                # BEGIN TODO (step 04)
                 raise NotImplementedError("TODO: step 04 (docs/04_*.md)")
+                # END TODO
 
 
 def configure_optimizer(model, lr, weight_decay, betas=(0.9, 0.95)):
@@ -36,10 +38,14 @@ def configure_optimizer(model, lr, weight_decay, betas=(0.9, 0.95)):
 
 def cosine_lr(step, max_lr, min_lr, warmup_steps, max_steps):
     """선형 warmup(step=0에서 max_lr/warmup_steps) 후 max_steps까지 cosine으로 min_lr까지 감소. (step 04)"""
+    # BEGIN TODO (step 04)
     raise NotImplementedError("TODO: step 04 (docs/04_*.md)")
+    # END TODO
 
 
 def clip_grad_norm_(params, max_norm):
     """전체 gradient L2 norm이 max_norm을 넘으면 비율을 맞춰 축소. 클리핑 전 norm(tensor) 반환. (step 04)"""
     grads = [p.grad for p in params if p.grad is not None]
+    # BEGIN TODO (step 04)
     raise NotImplementedError("TODO: step 04 (docs/04_*.md)")
+    # END TODO
