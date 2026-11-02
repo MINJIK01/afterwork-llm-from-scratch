@@ -7,15 +7,12 @@ from pathlib import Path
 
 import torch
 
-from common import EOS, OUT, device, keyword_hit_rate, keyword_pool, load_ckpt, load_tokenizer, read_docs, rollout, save_ckpt, show_samples
-from minillm.align import group_advantages, kl_k3, ppo_clip_loss, token_logprobs
+from common import (
+    EOS, OUT, device, keyword_hit_rate, keyword_pool, load_ckpt, load_tokenizer, read_docs,
+    response_logprobs, response_mask, rollout, save_ckpt, show_samples,
+)
+from minillm.align import group_advantages, kl_k3, ppo_clip_loss
 from minillm.optim import clip_grad_norm_, configure_optimizer
-
-
-def response_logprobs(model, out, n_prompt):
-    """out (G, L) 전체 시퀀스 → 응답 토큰 위치의 log p (G, L - n_prompt)."""
-    logits, _ = model(out[:, :-1])
-    return token_logprobs(logits[:, n_prompt - 1 :], out[:, n_prompt:])
 
 
 def main():
@@ -44,9 +41,7 @@ def main():
         groups, all_rewards = [], []
         for kw in rng.sample(pool, args.prompts_per_iter):
             p, _, rewards, out = rollout(policy, tok, kw, args.group, dev)
-            resp = out[:, len(p) :]
-            is_eos = (resp == eos).long()
-            mask = ((is_eos.cumsum(1) - is_eos) == 0).float()  # 첫 EOS까지(포함)
+            mask = response_mask(out[:, len(p) :], eos)
             with torch.no_grad():
                 old, ref_lp = response_logprobs(policy, out, len(p)), response_logprobs(ref, out, len(p))
             groups.append((out, len(p), mask, old, ref_lp))

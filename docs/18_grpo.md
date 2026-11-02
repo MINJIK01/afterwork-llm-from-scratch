@@ -73,6 +73,8 @@ $$\mathcal L = \mathcal L^{CLIP} + \beta_{KL}\,\hat{\mathrm{KL}}_{k_3}.$$
 4. 같은 샘플로 `inner_epochs`번 PPO-clip + KL 업데이트.
 5. 주기적으로 평가 키워드 적중률을 측정한다.
 
+학습 후 `python scripts/compare.py`로 DPO 결과와 함께 비교한다. KL 열이 크게 늘었는데 val loss가 나빠졌다면 보상 최적화가 언어 모델링 능력을 희생한 것이다. `--kl` 계수를 바꿔 이 trade-off를 관찰해 보라.
+
 응답 마스크는 첫 EOS까지(포함)이다. EOS 이후 위치는 생성 루프가 EOS로 채운 값이므로 학습에서 제외한다.
 
 ## 3. 구현 가이드

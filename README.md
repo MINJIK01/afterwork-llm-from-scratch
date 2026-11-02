@@ -131,7 +131,7 @@ TinyStories 앞부분 200MB를 내려받아 BPE(vocab 4096)를 학습하고 `dat
 python scripts/pretrain.py --preset m5
 ```
 
-12.2M 파라미터 모델을 약 65M 토큰으로 학습해 `out/pretrain.pt`에 저장한다.
+12.2M 파라미터 모델을 약 65M 토큰으로 학습해 `out/pretrain.pt`에 저장한다. 학습 곡선은 `out/pretrain.csv`(step, train loss, lr, grad norm, tok/s, val loss)에 기록된다. 중간에 끊기면 같은 명령에 `--resume`을 붙여 마지막 평가 시점부터 이어서 학습한다(모델·optimizer·데이터 순서까지 복원되어, 끊김 없이 학습한 것과 같은 결과가 나온다).
 
 ```bash
 python scripts/sft.py
@@ -145,7 +145,13 @@ python scripts/dpo.py
 python scripts/grpo.py
 ```
 
-SFT 후 DPO와 GRPO는 각각 `out/sft.pt`에서 시작하는 독립 실험이며, 평가 키워드 적중률을 학습 전후로 출력한다.
+SFT 후 DPO와 GRPO는 각각 `out/sft.pt`에서 시작하는 독립 실험이며, 평가 키워드 적중률을 학습 전후로 출력한다. 결과는 한 표로 비교한다.
+
+```bash
+python scripts/compare.py
+```
+
+`out/`에 있는 pretrain/sft/sft_lora/dpo/grpo 체크포인트마다 키워드 적중률, EOS 종료율, 평균 응답 길이, SFT 대비 KL(π‖ref), 사전학습 val loss를 출력한다. 적중률 상승이 길이 증가나 언어 모델링 능력 손실과 함께 왔는지 확인하는 용도이다.
 
 ```bash
 python scripts/bench_inference.py

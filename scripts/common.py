@@ -11,6 +11,7 @@ sys.path.insert(0, str(minillm_path()))
 
 import torch  # noqa: E402
 
+from minillm.align import token_logprobs  # noqa: E402
 from minillm.generate import generate  # noqa: E402
 from minillm.model import GPT, GPTConfig  # noqa: E402
 from minillm.tokenizer import BPETokenizer  # noqa: E402
@@ -115,6 +116,18 @@ def rollout(model, tok, keyword, n, dev, temperature=1.0):
         responses.append(resp)
         rewards.append(reward(tok.decode([t for t in resp if t != eos]), ended, keyword))
     return p, responses, rewards, out
+
+
+def response_mask(resp, eos_id):
+    """resp (G, L) 응답 토큰 → 첫 EOS까지(포함) 1인 float 마스크. 이후 위치는 generate가 EOS로 채운 값."""
+    is_eos = (resp == eos_id).long()
+    return ((is_eos.cumsum(1) - is_eos) == 0).float()
+
+
+def response_logprobs(model, out, n_prompt):
+    """out (G, L) 전체 시퀀스 → 응답 토큰 위치의 log p (G, L - n_prompt)."""
+    logits, _ = model(out[:, :-1])
+    return token_logprobs(logits[:, n_prompt - 1 :], out[:, n_prompt:])
 
 
 def keyword_hit_rate(model, tok, dev, keywords=EVAL_KEYWORDS, n=4, temperature=0.8):

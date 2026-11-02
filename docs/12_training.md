@@ -51,6 +51,8 @@ m5 프리셋은 4000 스텝 × 16,384 토큰 ≈ 65.5M 토큰, $C \approx 6 \tim
 - grad norm: 급증(spike)은 불안정 신호. clipping 임계값(1.0)과 비교.
 - lr: 스케줄이 의도대로 적용되는지.
 
+`pretrain.py`는 이 지표들을 `--out`과 같은 이름의 CSV(기본 `out/pretrain.csv`)에 기록한다. 설정을 바꾼 실행(예: `--dtype bf16`, `--n_kv_head 2`)을 `--out`만 달리해 돌리면 CSV끼리 학습 곡선을 비교할 수 있다. 체크포인트에는 optimizer 상태와 데이터 샘플링 난수 상태도 저장되므로, `--resume`으로 재개하면 중단 없이 학습한 것과 같은 결과가 나온다.
+
 ## 3. 구현 가이드
 
 - `train_step(model, optimizer, batches, grad_clip)`: `batches`는 `[(x, y), ...]`. 반환은 `(평균 loss: float, 클리핑 전 grad norm: float)`.

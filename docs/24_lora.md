@@ -52,7 +52,7 @@ Adam은 업데이트 크기를 대략 lr로 정규화하므로, $r$을 바꾸면
 python scripts/sft.py --lora_r 8 --lr 1e-3 --out out/sft_lora.pt
 ```
 
-학습 파라미터 수(로그의 `trainable params`)와 학습 후 키워드 적중률을 전체 SFT(`out/sft.pt`)와 비교한다. LoRA는 학습 파라미터가 적어 전체 미세조정보다 큰 lr(1e-3 수준)을 쓴다.
+학습 파라미터 수(로그의 `trainable params`)와 학습 후 키워드 적중률을 전체 SFT(`out/sft.pt`)와 비교한다. LoRA는 학습 파라미터가 적어 전체 미세조정보다 큰 lr(1e-3 수준)을 쓴다. `python scripts/compare.py --ref out/pretrain.pt`로 비교하면 KL과 val loss 열이 사전학습 모델에서 벗어난 정도를 보여 준다. "LoRA는 덜 배우고 덜 잊는다"는 보고(2.6)를 이 규모에서 확인해 볼 수 있다.
 
 ## 3. 구현 가이드
 
