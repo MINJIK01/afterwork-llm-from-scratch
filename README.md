@@ -2,11 +2,19 @@
 
 논문의 수식을 코드로 옮기는 연습을 목표로, 작은 GPT를 **autograd부터 프리트레이닝, 정렬(SFT·DPO·GRPO), 서빙 최적화(KV cache·양자화·speculative decoding)까지** 직접 구현하는 20단계 커리큘럼과, FlashAttention·GQA·mixed precision·LoRA를 다루는 심화 4단계로 구성된다. 모든 단계는 Apple Silicon M5 Mac(PyTorch MPS)에서 돌릴 수 있는 크기(약 12M 파라미터)로 설계했다.
 
-> **진도 트래커 (웹)**: https://claude.ai/artifact/BeRVt8bAmSzCXJzNN3LXsW — 지금 할 일, 완료 체크, 진행률, 예상 완료일, 측정 기록. 소유자 계정으로 로그인해야 열린다.
+> **진도 트래커**: https://minjik01.github.io/afterwork-llm-from-scratch/tracker/ — 지금 할 일, 완료 체크, 진행률, 예상 완료일, 측정 기록. 진도는 레포의 `progress.json`에 커밋된다. 처음 한 번 아래 "진도 트래커 설정"을 따른다.
 >
 > 퇴근 후 공부하는 일정으로 진행하려면 학습 계획을 따른다.
 > - [docs/STUDY_PLAN.md](docs/STUDY_PLAN.md): 평일 3회 × 60분 + 주말 3시간, 14주 (주 4시간 느린 트랙 22주)
 > - [docs/STUDY_PLAN_30MIN.md](docs/STUDY_PLAN_30MIN.md): 30분 세션 106개, 세션마다 통과할 테스트 지정 (평일 1세션이면 약 21주, 매일 1세션이면 약 15주)
+
+## 진도 트래커 설정
+
+1. **GitHub Pages 켜기** (한 번): 레포 Settings → Pages → Build and deployment → Source: *Deploy from a branch* → Branch: 기본 브랜치, 폴더 `/docs` → Save. 1–2분 뒤 위 주소가 열린다.
+2. **토큰 설정** (기기마다 한 번): 트래커의 "GitHub 토큰" 버튼 → 안내대로 이 레포에만 *Contents: Read and write* 권한을 준 fine-grained token을 만들어 붙여 넣는다. 토큰 없이도 진도를 볼 수는 있다.
+3. 체크하면 1.5초 동안 모은 변경을 `진도: 세션 3 완료` 같은 커밋 하나로 저장한다. 다른 기기에서 먼저 저장했으면 최신본에 이 기기의 변경을 얹어 다시 저장한다.
+
+세션 목록은 `tools/study_plan.py` 한 곳에서 관리한다. 계획을 고치면 `python tools/study_plan.py`로 `docs/STUDY_PLAN_30MIN.md`와 `docs/tracker/index.html`을 함께 다시 만든다.
 
 ## 구조
 

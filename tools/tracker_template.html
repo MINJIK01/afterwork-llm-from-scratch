@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>퇴근 후 LLM 진도표</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: 한 열 작업 도구. 위쪽에 '지금 할 일' + 진행 현황 2열(좁으면 1열), 아래에 파트별 세션 목록과 기록 */
+:root {
+  --bg: #F4F5F7; --surface: #FFFFFF; --ink: #1B1E25; --muted: #5D6472; --line: #E1E4EA;
+  --accent: #2456C4; --accent-soft: #E9EEFB; --done: #1E8550; --done-soft: #E2F2E9;
+  --amber: #9A5B00; --amber-soft: #FBF0DD; --danger: #B3261E;
+  --term-bg: #1D2230; --term-fg: #DCE2EE; --term-dim: #8D97AB;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111318; --surface: #181B22; --ink: #E6E8ED; --muted: #9CA3B0; --line: #2A2F3A;
+  --accent: #86A6FF; --accent-soft: #1D2742; --done: #55C990; --done-soft: #15291F;
+  --amber: #E6B05A; --amber-soft: #2E2414; --danger: #F2847C;
+  --term-bg: #0B0D12; --term-fg: #DCE2EE; --term-dim: #7D879A; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #111318; --surface: #181B22; --ink: #E6E8ED; --muted: #9CA3B0; --line: #2A2F3A;
+  --accent: #86A6FF; --accent-soft: #1D2742; --done: #55C990; --done-soft: #15291F;
+  --amber: #E6B05A; --amber-soft: #2E2414; --danger: #F2847C;
+  --term-bg: #0B0D12; --term-fg: #DCE2EE; --term-dim: #7D879A; color-scheme: dark;
+}
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 1060px; margin: 0 auto; padding-block: 28px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 22px; }
+h2 { font-size: 17px; }
+p { margin: 0; }
+a { color: var(--accent); }
+code { font-family: var(--font-mono); font-size: 0.88em; background: var(--accent-soft); color: var(--ink); padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+.eyebrow { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; }
+
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+header .sub { color: var(--muted); font-size: 13px; }
+.status { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.status[data-s="ok"] { color: var(--done); border-color: var(--done); }
+.status[data-s="warn"] { color: var(--amber); border-color: var(--amber); }
+.status[data-s="err"] { color: var(--danger); border-color: var(--danger); }
+.notice { background: var(--amber-soft); color: var(--ink); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+
+.top { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 780px) { .top { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 16px; min-width: 0; }
+
+/* 지금 할 일 */
+.now-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.now-head .eyebrow { color: var(--accent); }
+.now-n { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.now-n small { font-size: 15px; color: var(--muted); font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--line); color: var(--muted); white-space: nowrap; }
+.badge.k-impl { background: var(--accent-soft); color: var(--accent); }
+.badge.k-run { background: var(--amber-soft); color: var(--amber); }
+.chip-step { font-size: 12.5px; color: var(--muted); }
+.now-task { font-size: 18px; line-height: 1.55; font-weight: 500; }
+.crit-label { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.term { display: flex; align-items: center; gap: 10px; background: var(--term-bg); color: var(--term-fg); border-radius: 10px; padding: 10px 10px 10px 14px; min-width: 0; }
+.term pre { margin: 0; flex: 1; min-width: 0; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; white-space: pre; }
+.term pre::before { content: "$ "; color: var(--term-dim); }
+.term button { flex: none; }
+.crit-text { background: var(--bg); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; }
+textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; min-height: 44px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, .btn { font: inherit; font-size: 14px; font-weight: 600; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button.small { font-size: 12.5px; padding: 4px 10px; }
+.term button { background: transparent; color: var(--term-fg); border-color: var(--term-dim); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible, .btn:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.next { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+.next-row { display: grid; grid-template-columns: 34px auto minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 13.5px; color: var(--muted); }
+.next-row .t { color: var(--ink); min-width: 0; }
+
+/* 진행 현황 */
+.big { display: flex; align-items: baseline; gap: 8px; }
+.big b { font-size: 34px; line-height: 1; font-weight: 700; }
+.big span { color: var(--muted); }
+.bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.bar.full i { background: var(--done); }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-weight: 600; }
+select { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 100%; }
+.parts { display: grid; gap: 9px; }
+.part-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; font-size: 13px; }
+.part-row .bar { grid-column: 1 / -1; height: 6px; }
+.part-row .c { color: var(--muted); }
+
+/* 전체 세션 */
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted); }
+.list { display: grid; gap: 10px; }
+details.part { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+details.part > summary { list-style: none; cursor: pointer; padding: 14px 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+details.part > summary::-webkit-details-marker { display: none; }
+details.part > summary .bar { grid-column: 1 / -1; height: 5px; }
+details.part > summary h3 { font-size: 15px; }
+details.part > summary .c { font-size: 13px; color: var(--muted); }
+ol.rows { list-style: none; margin: 0; padding: 0 8px 8px; display: grid; gap: 2px; }
+.row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; padding: 10px; border-radius: 9px; }
+.row.current { background: var(--accent-soft); }
+.row input[type=checkbox] { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--done); }
+.row-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.row-head .n { font-weight: 700; color: var(--ink); min-width: 2.2em; }
+.row-head .d { margin-left: auto; color: var(--done); font-weight: 600; }
+.row .task { font-size: 14px; margin-top: 2px; }
+.row .crit { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.row .crit code { background: transparent; padding: 0; }
+.row.is-done .task { color: var(--muted); }
+.row.hidden-done { display: none; }
+.row details.note { margin-top: 6px; }
+.row details.note summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.row details.note[data-has] summary { color: var(--accent); }
+.row details.note textarea { margin-top: 6px; }
+
+/* 기록 */
+.log { display: grid; gap: 8px; }
+.log-item { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 4px; }
+.log-item .h { font-size: 12.5px; color: var(--muted); }
+.log-item .b { white-space: pre-wrap; font-size: 14px; }
+.empty { color: var(--muted); font-size: 14px; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+input[type=password] { width: 100%; box-sizing: border-box; font-family: var(--font-mono); font-size: 13.5px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+header .actions { justify-content: flex-end; }
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width .25s ease; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">afterwork-llm-from-scratch</div>
+      <h1>퇴근 후 LLM 진도표</h1>
+      <p class="sub">30분 세션 <span class="num" id="total-n"></span>개 · 번호 순서대로 진행 · 진도는 레포의 <a href="https://github.com/MINJIK01/afterwork-llm-from-scratch/blob/HEAD/progress.json" target="_blank" rel="noopener">progress.json</a>에 커밋됩니다</p>
+    </div>
+    <div class="actions"><span class="status" id="status" data-s="wait">불러오는 중</span>
+      <button type="button" class="small" id="reload">새로고침</button>
+      <button type="button" class="small" id="open-settings">GitHub 토큰</button></div>
+  </header>
+  <p class="notice" id="notice" hidden></p>
+
+  <section class="panel" id="settings" hidden aria-labelledby="settings-title">
+    <h2 id="settings-title">GitHub 토큰 설정</h2>
+    <p>체크와 메모를 저장하려면 이 레포에만 쓰기 권한이 있는 토큰이 필요합니다. 토큰은 이 브라우저에만 저장되므로 기기마다 한 번씩 입력합니다. 토큰 없이도 진도를 볼 수는 있습니다.</p>
+    <ol class="steps">
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained token 만들기</a>를 엽니다.</li>
+      <li>Repository access: <b>Only select repositories</b> → <code>afterwork-llm-from-scratch</code></li>
+      <li>Permissions → Repository permissions → <b>Contents: Read and write</b> (나머지는 기본값)</li>
+      <li>생성된 토큰(<code>github_pat_</code>로 시작)을 아래에 붙여 넣습니다.</li>
+    </ol>
+    <div class="token-row">
+      <label class="crit-label" for="token">토큰</label>
+      <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="github_pat_...">
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="save-token">저장</button>
+      <button type="button" id="clear-token">이 브라우저에서 삭제</button>
+      <button type="button" id="close-settings">닫기</button>
+    </div>
+    <p class="crit-label">이 토큰은 같은 계정의 다른 GitHub Pages 사이트와 같은 브라우저 저장 공간을 씁니다. 권한을 이 레포의 Contents로만 제한하고 만료일을 정해 두세요.</p>
+  </section>
+
+  <div class="top">
+    <section class="panel" id="now" aria-labelledby="now-title"></section>
+    <aside class="panel" aria-labelledby="stats-title">
+      <h2 id="stats-title">진행 현황</h2>
+      <div class="big"><b class="num" id="pct">0%</b><span class="num" id="done-of"></span></div>
+      <div class="bar" id="total-bar"><i style="width:0%"></i></div>
+      <dl class="kv">
+        <dt>이번 주 완료</dt><dd class="num" id="week"></dd>
+        <dt>최근 2주 속도</dt><dd class="num" id="rate"></dd>
+        <dt>마지막 완료</dt><dd class="num" id="last"></dd>
+      </dl>
+      <div>
+        <label class="crit-label" for="pace">진행 속도 (예상 완료일 계산 기준)</label>
+        <select id="pace">
+          <option value="5">평일 1세션 · 주 5세션</option>
+          <option value="7">매일 1세션 · 주 7세션</option>
+          <option value="9">평일 1 + 주말 4 · 주 9세션</option>
+          <option value="10">평일 2세션 · 주 10세션</option>
+        </select>
+      </div>
+      <dl class="kv">
+        <dt>예상 완료일 (설정 속도)</dt><dd class="num" id="eta"></dd>
+        <dt>예상 완료일 (최근 속도)</dt><dd class="num" id="eta2"></dd>
+      </dl>
+      <div class="parts" id="parts"></div>
+    </aside>
+  </div>
+
+  <section aria-labelledby="list-title" style="display:grid;gap:12px">
+    <div class="section-head">
+      <h2 id="list-title">전체 세션</h2>
+      <label class="toggle"><input type="checkbox" id="hide-done"> 완료한 세션 숨기기</label>
+    </div>
+    <div class="list" id="list"></div>
+  </section>
+
+  <section aria-labelledby="log-title" style="display:grid;gap:12px">
+    <h2 id="log-title">실험·측정 기록</h2>
+    <p class="empty" id="log-empty">세션 메모가 여기에 모입니다. 학습 실행 세션에서 val loss, tok/s, 적중률 같은 측정값을 메모해 두면 나중에 비교하기 쉽습니다.</p>
+    <div class="log" id="log"></div>
+  </section>
+</div>
+
+<script>
+/*__DATA__*/
+const OWNER = "MINJIK01", REPO_NAME = "afterwork-llm-from-scratch", FILE = "progress.json";
+const API = `https://api.github.com/repos/${OWNER}/${REPO_NAME}/contents/${FILE}`;
+const REPO = `https://github.com/${OWNER}/${REPO_NAME}/blob/HEAD/`;
+const TOKEN_KEY = "afterwork-llm-from-scratch:token";
+const KIND_CLASS = { "구현": "k-impl", "실행": "k-run" };
+const sid = n => "s" + String(n).padStart(3, "0");
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const md = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fmtShort = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+
+// 상태: progress.json = { pace, sessions: { "s003": {done, doneAt, note} } }
+let progress = {};
+let pace = 5;
+let sha = null;            // 마지막으로 읽거나 쓴 progress.json의 blob sha (없으면 새 파일)
+let loaded = false;
+let token = readToken();
+let pending = {};          // 아직 커밋하지 않은 세션 변경 (충돌 시 최신본 위에 다시 얹는다)
+let pendingMsg = [];
+let paceDirty = false;
+let timer = null, saving = false;
+let openedPart = null;
+
+function readToken() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
+function writeToken(t) { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} }
+const writable = () => !!token && loaded;
+const headers = () => ({ Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", ...(token ? { Authorization: `Bearer ${token}` } : {}) });
+const b64enc = s => { let bin = ""; new TextEncoder().encode(s).forEach(b => (bin += String.fromCharCode(b))); return btoa(bin); };
+const b64dec = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g, "")), c => c.charCodeAt(0)));
+
+function setStatus(s, text) { const el = $("status"); el.dataset.s = s; el.textContent = text; }
+function showNotice(text) { const el = $("notice"); el.textContent = text; el.hidden = !text; }
+const isDone = n => !!(progress[sid(n)] && progress[sid(n)].done);
+const noteOf = n => (progress[sid(n)] && progress[sid(n)].note) || "";
+const currentSession = () => SESSIONS.find(s => !isDone(s.n)) || null;
+
+async function fetchRemote() {
+  const r = await fetch(`${API}?t=${Date.now()}`, { headers: headers(), cache: "no-store" });
+  if (r.status === 404) return { data: {}, sha: null };
+  if (!r.ok) throw { status: r.status };
+  const j = await r.json();
+  return { data: JSON.parse(b64dec(j.content)), sha: j.sha };
+}
+
+async function load() {
+  setStatus("wait", "불러오는 중");
+  try {
+    const { data, sha: s } = await fetchRemote();
+    progress = { ...(data.sessions || {}), ...pending };
+    if (data.pace && !paceDirty) pace = data.pace;
+    sha = s; loaded = true;
+    if (!token) { setStatus("warn", "읽기 전용"); showNotice("진도를 보는 중입니다. 체크와 메모를 저장하려면 'GitHub 토큰'에서 토큰을 설정하세요."); }
+    else { setStatus("ok", "동기화됨"); showNotice(""); }
+  } catch (e) {
+    setStatus("err", "불러오기 실패");
+    showNotice(e.status === 403 ? "GitHub API 요청 한도에 걸렸습니다. 토큰을 설정하면 한도가 늘어납니다. 잠시 후 새로고침해 주세요."
+      : e.status === 401 ? "토큰이 유효하지 않습니다. 'GitHub 토큰'에서 다시 설정하세요."
+      : "progress.json을 불러오지 못했습니다. 네트워크를 확인한 뒤 새로고침해 주세요.");
+  }
+  renderAll();
+}
+
+function save(n, patch, msg, rerender = true) {
+  if (!writable()) return;
+  const id = sid(n);
+  const next = { done: false, doneAt: null, note: "", ...(progress[id] || {}), ...patch };
+  progress = { ...progress, [id]: next };
+  pending[id] = next;
+  pendingMsg.push(msg);
+  if (rerender) renderAll(); else { renderStats(); updateList(); renderLog(); }
+  schedule();
+}
+function schedule() { clearTimeout(timer); setStatus("wait", "저장 대기"); timer = setTimeout(commit, 1500); }
+
+async function commit() {
+  if (saving) { schedule(); return; }
+  if (!Object.keys(pending).length && !paceDirty) return;
+  saving = true; setStatus("wait", "저장 중");
+  const changes = pending, msgs = pendingMsg, paceChanged = paceDirty;
+  pending = {}; pendingMsg = []; paceDirty = false;
+  const message = msgs.length ? `진도: ${msgs.slice(0, 4).join(", ")}${msgs.length > 4 ? ` 외 ${msgs.length - 4}건` : ""}` : `진도: 진행 속도 주 ${pace}세션`;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const body = JSON.stringify({ pace, sessions: progress }, null, 1) + "\n";
+      const r = await fetch(API, { method: "PUT", headers: { ...headers(), "Content-Type": "application/json" },
+        body: JSON.stringify({ message, content: b64enc(body), ...(sha ? { sha } : {}) }) });
+      if (r.ok) { const j = await r.json(); sha = j.content.sha; setStatus("ok", `저장됨 · ${j.commit.sha.slice(0, 7)}`); showNotice(""); break; }
+      if ((r.status === 409 || r.status === 422) && attempt < 2) {
+        // 다른 기기가 먼저 저장했다: 최신본을 받아 이번 변경을 다시 얹는다
+        const { data, sha: s } = await fetchRemote();
+        progress = { ...(data.sessions || {}), ...changes, ...pending };
+        if (!paceChanged && data.pace) pace = data.pace;
+        sha = s;
+        continue;
+      }
+      throw { status: r.status };
+    }
+  } catch (e) {
+    pending = { ...changes, ...pending }; pendingMsg = [...msgs, ...pendingMsg]; paceDirty = paceDirty || paceChanged;
+    setStatus("err", "저장 실패");
+    showNotice(e.status === 401 || e.status === 403 || e.status === 404
+      ? "저장 권한이 없습니다. 토큰이 이 레포의 Contents: Read and write 권한을 갖는지 확인하세요. 변경 내용은 이 화면에 남아 있습니다."
+      : "저장하지 못했습니다. 네트워크를 확인한 뒤 아무 항목이나 다시 체크하거나 새로고침 전에 잠시 기다려 주세요.");
+  } finally {
+    saving = false;
+    renderAll();
+  }
+}
+
+function critHTML(s, compact) {
+  if (s.cmd) {
+    if (compact) return `<div class="crit">완료 기준: <code>${esc(s.cmd)}</code> 통과</div>`;
+    return `<div><div class="crit-label">완료 기준 · 이 테스트가 통과하면 끝</div>
+      <div class="term"><pre>${esc(s.cmd)}</pre><button type="button" class="small" data-copy="${esc(s.cmd)}">복사</button></div></div>`;
+  }
+  if (compact) return `<div class="crit">완료 기준: ${md(s.done)}</div>`;
+  return `<div><div class="crit-label">완료 기준</div><div class="crit-text">${md(s.done)}</div></div>`;
+}
+function stepLabel(s) { return s.step === "--" ? "" : `Step ${s.step}`; }
+const metaLine = (...xs) => xs.filter(Boolean).map(esc).join(" · ");
+
+function renderNow() {
+  const el = $("now");
+  const cur = currentSession();
+  if (!cur) {
+    el.innerHTML = `<div class="now-head"><span class="eyebrow" id="now-title">지금 할 일</span></div>
+      <p class="now-task">${SESSIONS.length}개 세션을 모두 마쳤습니다. 실험·측정 기록을 보며 회고를 정리해 보세요.</p>`;
+    return;
+  }
+  const w = writable();
+  const doc = cur.doc ? `<a class="btn" href="${REPO}docs/${cur.doc}" target="_blank" rel="noopener">문서 열기</a>
+      <a class="btn" href="${REPO}docs/answers/${cur.doc}" target="_blank" rel="noopener">해설</a>` : "";
+  const nexts = SESSIONS.filter(s => s.n > cur.n && !isDone(s.n)).slice(0, 3);
+  el.innerHTML = `
+    <div class="now-head">
+      <span class="eyebrow" id="now-title">지금 할 일</span>
+      <span class="now-n num">세션 ${cur.n} <small>/ ${SESSIONS.length}</small></span>
+    </div>
+    <div class="chips"><span class="badge ${KIND_CLASS[cur.kind] || ""}">${esc(cur.kind)}</span>
+      <span class="chip-step">${metaLine(stepLabel(cur), PARTS[cur.part])}</span></div>
+    <p class="now-task">${md(cur.task)}</p>
+    ${critHTML(cur, false)}
+    <div><label class="crit-label" for="now-note">메모 (측정값, 막힌 점)</label>
+      <textarea id="now-note" data-note="${cur.n}" rows="2" ${w ? "" : "disabled"}>${esc(noteOf(cur.n))}</textarea></div>
+    <div class="actions">
+      <button type="button" class="primary" data-done="${cur.n}" ${w ? "" : "disabled"}>완료로 표시</button>
+      ${doc}
+    </div>
+    ${nexts.length ? `<div class="next"><span class="eyebrow">그다음</span>${nexts.map(s => `
+      <div class="next-row"><span class="num">${s.n}</span><span class="badge ${KIND_CLASS[s.kind] || ""}">${esc(s.kind)}</span><span class="t">${md(s.task)}</span></div>`).join("")}</div>` : ""}`;
+}
+
+function renderStats() {
+  const total = SESSIONS.length;
+  const doneList = SESSIONS.filter(s => isDone(s.n));
+  const done = doneList.length;
+  const pct = Math.round(done / total * 100);
+  $("total-n").textContent = total;
+  $("pct").textContent = pct + "%";
+  $("done-of").textContent = `${done} / ${total} 세션`;
+  $("total-bar").firstElementChild.style.width = pct + "%";
+  $("total-bar").classList.toggle("full", done === total);
+
+  const now = new Date();
+  const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const times = doneList.map(s => progress[sid(s.n)].doneAt).filter(Boolean).map(t => new Date(t));
+  $("week").textContent = `${times.filter(t => t >= monday).length}세션`;
+  const rate = times.filter(t => now - t <= 14 * 864e5).length / 2;
+  $("rate").textContent = `주 ${rate % 1 ? rate.toFixed(1) : rate}세션`;
+  const lastS = doneList.filter(s => progress[sid(s.n)].doneAt).sort((a, b) => progress[sid(b.n)].doneAt.localeCompare(progress[sid(a.n)].doneAt))[0];
+  $("last").textContent = lastS ? `세션 ${lastS.n} · ${fmtShort(progress[sid(lastS.n)].doneAt)}` : "아직 없음";
+
+  const remaining = total - done;
+  const eta = perWeek => { const d = new Date(now); d.setDate(d.getDate() + Math.ceil(remaining / perWeek * 7)); return `${fmtDate(d)} (약 ${Math.ceil(remaining / perWeek)}주)`; };
+  $("pace").value = String(pace);
+  $("pace").disabled = !writable();
+  $("eta").textContent = remaining ? eta(pace) : "완료";
+  $("eta2").textContent = remaining ? (rate > 0 ? eta(rate) : "최근 2주 기록 없음") : "완료";
+
+  $("parts").innerHTML = PARTS.map((t, i) => {
+    const ss = SESSIONS.filter(s => s.part === i), d = ss.filter(s => isDone(s.n)).length, p = Math.round(d / ss.length * 100);
+    return `<div class="part-row"><span>${esc(t)}</span><span class="c num">${d}/${ss.length}</span>
+      <div class="bar${d === ss.length ? " full" : ""}"><i style="width:${p}%"></i></div></div>`;
+  }).join("");
+}
+
+function buildList() {
+  const cur = currentSession();
+  $("list").innerHTML = PARTS.map((t, i) => `
+    <details class="part" id="part-${i}" ${cur && cur.part === i ? "open" : ""}>
+      <summary><h3>${esc(t)}</h3><span class="c num" id="pc-${i}"></span><div class="bar" id="pb-${i}"><i></i></div></summary>
+      <ol class="rows">${SESSIONS.filter(s => s.part === i).map(s => `
+        <li class="row" id="row-${s.n}">
+          <input type="checkbox" id="cb-${s.n}" data-toggle="${s.n}" aria-label="세션 ${s.n} 완료">
+          <div style="min-width:0">
+            <div class="row-head"><span class="n num">${s.n}</span><span class="badge ${KIND_CLASS[s.kind] || ""}">${esc(s.kind)}</span>
+              <span>${esc(stepLabel(s))}</span>${s.doc ? `<a href="${REPO}docs/${s.doc}" target="_blank" rel="noopener">문서</a>` : ""}<span class="d num" id="date-${s.n}"></span></div>
+            <p class="task">${md(s.task)}</p>
+            ${critHTML(s, true)}
+            <details class="note" id="nd-${s.n}"><summary>메모</summary><textarea id="note-${s.n}" data-note="${s.n}" rows="2"></textarea></details>
+          </div>
+        </li>`).join("")}</ol>
+    </details>`).join("");
+}
+
+function updateList() {
+  const cur = currentSession();
+  const hide = $("hide-done").checked;
+  const w = writable();
+  if (cur && cur.part !== openedPart) { $("part-" + cur.part).open = true; openedPart = cur.part; }
+  PARTS.forEach((_, i) => {
+    const ss = SESSIONS.filter(s => s.part === i), d = ss.filter(s => isDone(s.n)).length;
+    $("pc-" + i).textContent = `${d}/${ss.length}`;
+    $("pb-" + i).firstElementChild.style.width = Math.round(d / ss.length * 100) + "%";
+    $("pb-" + i).classList.toggle("full", d === ss.length);
+  });
+  for (const s of SESSIONS) {
+    const p = progress[sid(s.n)] || {}, done = !!p.done;
+    const row = $("row-" + s.n);
+    row.classList.toggle("is-done", done);
+    row.classList.toggle("current", !!cur && cur.n === s.n);
+    row.classList.toggle("hidden-done", hide && done);
+    const cb = $("cb-" + s.n); cb.checked = done; cb.disabled = !w;
+    $("date-" + s.n).textContent = done && p.doneAt ? fmtShort(p.doneAt) + " 완료" : "";
+    const ta = $("note-" + s.n);
+    if (document.activeElement !== ta) ta.value = p.note || "";
+    ta.disabled = !w;
+    if (p.note) $("nd-" + s.n).dataset.has = ""; else delete $("nd-" + s.n).dataset.has;
+  }
+}
+
+function renderLog() {
+  const items = SESSIONS.filter(s => noteOf(s.n).trim());
+  $("log-empty").hidden = items.length > 0;
+  $("log").innerHTML = items.map(s => {
+    const p = progress[sid(s.n)];
+    return `<div class="log-item"><div class="h num">${metaLine("세션 " + s.n, stepLabel(s), s.kind, p.doneAt && fmtShort(p.doneAt))}</div>
+      <div class="b">${esc(p.note)}</div></div>`;
+  }).join("");
+}
+
+function renderAll() {
+  const active = document.activeElement && document.activeElement.id === "now-note";
+  if (!active) renderNow();
+  renderStats(); updateList(); renderLog();
+}
+
+function flash(btn, text) { const t = btn.textContent; btn.textContent = text; setTimeout(() => (btn.textContent = t), 1400); }
+function selectFallback(pre, btn) {
+  const r = document.createRange(); r.selectNodeContents(pre);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  flash(btn, "선택됨");
+}
+function openSettings(open) { $("settings").hidden = !open; if (open) { $("token").value = token; $("token").focus(); } }
+
+document.addEventListener("click", e => {
+  const copyBtn = e.target.closest("[data-copy]");
+  if (copyBtn) {
+    const pre = copyBtn.previousElementSibling;
+    try { navigator.clipboard.writeText(copyBtn.dataset.copy).then(() => flash(copyBtn, "복사됨"), () => selectFallback(pre, copyBtn)); }
+    catch { selectFallback(pre, copyBtn); }
+    return;
+  }
+  const doneBtn = e.target.closest("[data-done]");
+  if (doneBtn) {
+    const n = +doneBtn.dataset.done, ta = $("now-note");
+    save(n, { done: true, doneAt: new Date().toISOString(), note: ta ? ta.value : noteOf(n) }, `세션 ${n} 완료`);
+    return;
+  }
+  switch (e.target.id) {
+    case "reload": if (Object.keys(pending).length) { commit(); } else { load(); } break;
+    case "open-settings": openSettings($("settings").hidden); break;
+    case "close-settings": openSettings(false); break;
+    case "save-token":
+      token = $("token").value.trim(); writeToken(token); openSettings(false); load(); break;
+    case "clear-token":
+      token = ""; writeToken(""); $("token").value = ""; openSettings(false); load(); break;
+  }
+});
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.toggle) {
+    const n = +t.dataset.toggle;
+    save(n, t.checked ? { done: true, doneAt: new Date().toISOString() } : { done: false, doneAt: null },
+      `세션 ${n} ${t.checked ? "완료" : "완료 취소"}`);
+  } else if (t.dataset.note) {
+    const n = +t.dataset.note;
+    // 지금 할 일 카드의 메모는 카드를 다시 그리지 않는다 (같은 순간의 '완료로 표시' 클릭이 사라지지 않도록)
+    if (t.value !== noteOf(n)) save(n, { note: t.value }, `세션 ${n} 메모`, t.id !== "now-note");
+  } else if (t.id === "pace") {
+    pace = +t.value; paceDirty = true; renderStats(); schedule();
+  } else if (t.id === "hide-done") {
+    updateList();
+  }
+});
+window.addEventListener("beforeunload", e => {
+  if (saving || Object.keys(pending).length || paceDirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
+buildList();
+renderAll();
+load();
+</script>
+</body>
+</html>
