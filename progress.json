@@ -1,0 +1,10 @@
+{
+ "pace": 5,
+ "sessions": {
+  "s001": {
+   "done": false,
+   "doneAt": null,
+   "note": ""
+  }
+ }
+}
