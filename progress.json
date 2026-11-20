@@ -2,8 +2,8 @@
  "pace": 5,
  "sessions": {
   "s001": {
-   "done": false,
-   "doneAt": null,
+   "done": true,
+   "doneAt": "2026-11-20T12:52:26.217Z",
    "note": ""
   }
  }
