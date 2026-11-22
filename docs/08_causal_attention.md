@@ -37,7 +37,83 @@ cache가 없으면 $T_k = T$이므로 일반적인 하삼각 마스크가 된다
 
 $T \ll C$이면 투영이 지배적이고, $T$가 커지면 $T^2$ 항이 지배적이 된다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 shape 따라가기
+
+$B = 2$, $T = 5$, $C = 16$, $H = 4$ ($d_h = 4$):
+
+| 단계 | 코드 | shape |
+|---|---|---|
+| 입력 | `x` | (2, 5, 16) |
+| QKV 투영 | `self.qkv(x)` | (2, 5, 48) |
+| 분리 | `.split(16, dim=-1)` | q, k, v 각 (2, 5, 16) |
+| head 분할 | `.view(2, 5, 4, 4)` | (2, 5, **4**, 4) — 16 = 4 head × 4 차원 |
+| head를 앞으로 | `.transpose(1, 2)` | (2, **4**, 5, 4) — (B, H, T, d_h) |
+| RoPE | `apply_rope(q, cos, sin)` | (2, 4, 5, 4) |
+| score | $QK^\top/\sqrt{d_h}$ | (2, 4, 5, 5) — head마다 5×5 |
+| 출력 | $\alpha V$ | (2, 4, 5, 4) |
+| head 합치기 | `.transpose(1, 2).reshape(2, 5, 16)` | (2, 5, 16) |
+| 출력 투영 | `self.proj(...)` | (2, 5, 16) |
+
+```mermaid
+graph LR
+  x["x (B,T,C)"] --> qkv["qkv Linear → (B,T,3C)"]
+  qkv --> split["split → q,k,v (B,T,C)"]
+  split --> heads["view+transpose → (B,H,T,d_h)"]
+  heads --> rope["RoPE (q,k)"]
+  rope --> sdpa["masked attention (B,H,T,d_h)"]
+  sdpa --> merge["transpose+reshape → (B,T,C)"]
+  merge --> proj["proj Linear → (B,T,C)"]
+```
+
+`view(2, 5, 4, 4)`가 하는 일은 각 토큰의 16차원 벡터를 `[0:4] [4:8] [8:12] [12:16]` 네 덩어리로 나누는 것이다. 덩어리 $h$가 head $h$의 입력이 된다.
+
+### 3.2 마스크 세 가지 상황
+
+`torch.ones(T, Tk).tril(diagonal=Tk - T)` 하나로 모두 처리된다. 1 = 참조 허용.
+
+**학습 / prefill** ($T = T_k = 5$, diagonal 0):
+
+```
+         key 0 1 2 3 4
+query 0      1 0 0 0 0
+query 1      1 1 0 0 0
+query 2      1 1 1 0 0
+query 3      1 1 1 1 0
+query 4      1 1 1 1 1
+```
+
+**cache에 3개가 있고 새 토큰 2개** ($T = 2$, $T_k = 5$, diagonal 3): 새 query의 절대 위치는 3, 4이다.
+
+```
+         key 0 1 2 3 4
+query 0(=위치3) 1 1 1 1 0
+query 1(=위치4) 1 1 1 1 1
+```
+
+**decode, 토큰 1개** ($T = 1$, $T_k = 5$, diagonal 4): 과거 전체를 본다.
+
+```
+         key 0 1 2 3 4
+query 0(=위치4) 1 1 1 1 1
+```
+
+diagonal을 0으로 고정하면 마지막 경우 첫 행이 `1 0 0 0 0`이 되어 새 토큰이 첫 토큰만 보게 된다(해설 08의 3번).
+
+### 3.3 파라미터 수
+
+$C = 384$ (m5 프리셋):
+
+| 가중치 | shape | 개수 |
+|---|---|---|
+| `qkv` | (1152, 384) | 442,368 |
+| `proj` | (384, 384) | 147,456 |
+| 합 | | 589,824 $= 4C^2$ |
+
+head 수를 6에서 12로 바꿔도 이 수는 같다. head 수는 $C$를 몇 조각으로 나누는지만 정한다.
+
+## 4. 구현 가이드
 
 1. `self.qkv(x).split(C, dim=-1)` → 각각 `(B, T, C)`.
 2. `view(B, T, H, d_h).transpose(1, 2)` → `(B, H, T, d_h)`.
@@ -48,11 +124,11 @@ $T \ll C$이면 투영이 지배적이고, $T$가 커지면 $T^2$ 항이 지배�
 
 forward 본문은 마커상 두 구간으로 나뉘어 있다. 1–3을 첫 구간에, 5–6을 두 번째 구간에 작성한다.
 
-## 4. 검증
+## 5. 검증
 
 같은 가중치로 `F.scaled_dot_product_attention(is_causal=True)` 기반 참조 구현과 비교하고, 미래 토큰을 바꿔도 과거 위치의 출력이 변하지 않는지(causality) 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/08_causal_attention.md](answers/08_causal_attention.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

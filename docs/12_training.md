@@ -53,17 +53,85 @@ m5 프리셋은 4000 스텝 × 16,384 토큰 ≈ 65.5M 토큰, $C \approx 6 \tim
 
 `pretrain.py`는 이 지표들을 `--out`과 같은 이름의 CSV(기본 `out/pretrain.csv`)에 기록한다. 설정을 바꾼 실행(예: `--dtype bf16`, `--n_kv_head 2`)을 `--out`만 달리해 돌리면 CSV끼리 학습 곡선을 비교할 수 있다. 체크포인트에는 optimizer 상태와 데이터 샘플링 난수 상태도 저장되므로, `--resume`으로 재개하면 중단 없이 학습한 것과 같은 결과가 나온다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 Gradient accumulation이 같은 결과를 내는 이유
+
+모델 $\hat y = wx$, $w = 1$, 손실은 평균제곱오차. 데이터 $x = [1, 2, 3, 4]$, $y = [2, 2, 2, 2]$.
+
+| 방식 | 계산 | $\partial L/\partial w$ |
+|---|---|---|
+| 한 번에 4개 | $\frac{2}{4}\sum (wx - y)x$ | **5.0** |
+| 2개씩 두 번 | 마이크로배치 1: −1.0, 마이크로배치 2: 11.0 → 평균 | **5.0** |
+| 1개 + 3개 (크기가 다름) | −2.0, 7.33 → 단순 평균 | 2.67 ✗ |
+
+크기가 같은 마이크로배치는 각 loss를 $1/K$배 해서 `.backward()`를 누적하면 전체 배치 gradient와 정확히 같다. 크기가 다르면 단순 평균이 틀린다(해설 12의 1번).
+
+```mermaid
+sequenceDiagram
+  participant M as model
+  participant G as .grad
+  participant O as optimizer
+  Note over G: zero_grad → 0
+  M->>G: (loss₁ / 2).backward()  → g₁/2
+  M->>G: (loss₂ / 2).backward()  → g₁/2 + g₂/2
+  Note over G: clip_grad_norm_ (누적 후 한 번)
+  G->>O: step()
+```
+
+### 3.2 loss와 perplexity의 감각
+
+| loss (nats/토큰) | perplexity $e^{L}$ | 의미 |
+|---|---|---|
+| 8.318 | 4096 | $V = 4096$에서 균등 분포 (학습 전) |
+| 6.0 | 403 | |
+| 4.0 | 54.6 | |
+| 2.0 | 7.4 | 매 토큰 약 7개 후보 중 고르는 정도의 불확실성 |
+| 1.0 | 2.7 | |
+
+토크나이저가 다른 모델과 비교할 때는 bits-per-byte로 바꾼다. 예: loss 1.5, 토큰당 4.1바이트면 $1.5/\ln2/4.1 = 0.528$ bits/byte.
+
+### 3.3 학습 로그 읽기
+
+이 레포를 개발할 때 TinyShakespeare(vocab 1024), `--preset tiny`로 600스텝 돌린 실제 로그:
+
+| step | train loss | val loss | val ppl | 해석 |
+|---|---|---|---|---|
+| 0 | 6.934 | | | $\ln 1024 = 6.931$. 초기화 정상 |
+| 100 | | 4.896 | 133.7 | warmup 직후 빠르게 하강 |
+| 200 | 4.350 | 4.353 | 77.7 | train ≈ val: 과적합 없음 |
+| 400 | 3.908 | 3.948 | 51.9 | |
+| 600 | | 3.831 | 46.1 | cosine decay로 lr이 줄며 하강 폭 감소 |
+
+이상 신호:
+
+- 첫 스텝 loss가 $\ln V$보다 훨씬 크다 → 초기화 문제.
+- train은 계속 내려가는데 val이 올라간다 → 과적합(데이터가 작거나 너무 오래 학습).
+- grad norm이 갑자기 수십 배로 튄다 → 불안정. lr을 낮추거나 warmup을 늘린다.
+- loss가 `nan` → 대개 overflow. softmax/CE 구현의 max-subtraction이나 lr을 확인한다.
+
+### 3.4 compute 예산 계산 예
+
+12.2M 파라미터 모델:
+
+| 기준 | 토큰 수 | FLOPs ($6ND$) |
+|---|---|---|
+| m5 프리셋 (4000 스텝 × 16,384) | 65.5M | $4.8\times10^{15}$ |
+| Chinchilla 최적 ($20N$) | 244M | $1.8\times10^{16}$ |
+
+같은 Mac 처리량이면 Chinchilla 기준은 m5 프리셋의 약 3.7배 시간이 걸린다.
+
+## 4. 구현 가이드
 
 - `train_step(model, optimizer, batches, grad_clip)`: `batches`는 `[(x, y), ...]`. 반환은 `(평균 loss: float, 클리핑 전 grad norm: float)`.
 - `evaluate`: step 11의 `get_batch`를 `iters`번 호출해 평균 loss, `math.exp(loss)` 반환.
 - MPS: `loss.item()`은 GPU 동기화를 일으킨다. 마이크로배치당 한 번은 허용 범위이다.
 
-## 4. 검증
+## 5. 검증
 
 2개 마이크로배치 누적 gradient가 전체 배치 gradient와 같은지(`lr=0`으로 파라미터 고정), 단일 배치 overfit, `evaluate`의 반환값과 train 모드 복귀를 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/12_training.md](answers/12_training.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

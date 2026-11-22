@@ -41,17 +41,73 @@ $$\mathrm{SwiGLU}(x) = W_{down}\big(\mathrm{SiLU}(W_{gate}x) \odot W_{up}x\big),
 
 attention $4d^2$ + FFN $3dh$ + RMSNorm 2개 $2d$.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 RMSNorm vs LayerNorm을 같은 입력에
+
+$x = [1, 2, 3, 4]$, gain = 1.
+
+| | 계산 | 출력 |
+|---|---|---|
+| RMSNorm | $\mathrm{rms} = \sqrt{(1+4+9+16)/4} = 2.7386$, $x/\mathrm{rms}$ | [0.3651, 0.7303, 1.0954, 1.4606] |
+| LayerNorm | 평균 2.5를 빼고 표준편차 1.118로 나눔 | [−1.3416, −0.4472, 0.4472, 1.3416] |
+| RMSNorm, 입력 $x + 10$ | | [0.8765, 0.9562, 1.0359, 1.1155] — 달라짐 |
+| RMSNorm, 입력 $10x$ | | [0.3651, 0.7303, 1.0954, 1.4606] — 같음 |
+
+RMSNorm은 평균을 빼지 않으므로 출력 평균이 0이 아니고, 상수를 더하면 결과가 바뀐다. 크기를 키우는 것에는 불변이다.
+
+### 3.2 SiLU와 그 도함수
+
+| $z$ | −3 | −2 | −1 | −0.5 | 0 | 0.5 | 1 | 2 | 3 |
+|---|---|---|---|---|---|---|---|---|---|
+| ReLU | 0 | 0 | 0 | 0 | 0 | 0.5 | 1 | 2 | 3 |
+| SiLU $z\sigma(z)$ | −0.1423 | −0.2384 | **−0.2689** | −0.1888 | 0 | 0.3112 | 0.7311 | 1.7616 | 2.8577 |
+| SiLU′ | −0.0881 | −0.0908 | 0.0723 | 0.26 | 0.5 | 0.74 | 0.9277 | 1.0908 | 1.0881 |
+
+- 큰 양수에서는 ReLU와 거의 같다.
+- 음수에서도 0이 아닌 작은 값과 gradient가 있다. ReLU의 dead neuron 문제가 없다.
+- 약 $z = -1.28$에서 최솟값(−0.278)을 가지는 비단조 함수이고, 도함수가 1을 약간 넘는 구간도 있다.
+
+### 3.3 블록 안의 데이터 흐름
+
+```mermaid
+graph TD
+  x0["x (residual stream)"] --> n1["RMSNorm"]
+  n1 --> att["CausalSelfAttention"]
+  att --> add1(("+"))
+  x0 --> add1
+  add1 --> n2["RMSNorm"]
+  n2 --> ffn["SwiGLU FFN"]
+  ffn --> add2(("+"))
+  add1 --> add2
+  add2 --> out["다음 블록으로"]
+```
+
+정규화는 서브레이어의 **입력**에만 걸리고, residual 경로(왼쪽 직선)에는 아무것도 걸리지 않는다. 이것이 pre-norm이다. post-norm은 `+` 뒤에 정규화를 둔다.
+
+### 3.4 SwiGLU 한 토큰
+
+$d = 384$, $h = 1024$일 때 한 토큰 $x$ (384)에서:
+
+| 단계 | shape |
+|---|---|
+| $g = W_{gate}x$, $u = W_{up}x$ | 각 (1024) |
+| $\mathrm{SiLU}(g) \odot u$ | (1024) — 원소별 곱: $g$가 $u$의 각 성분을 얼마나 통과시킬지 정한다 |
+| $W_{down}(\cdot)$ | (384) |
+
+블록 하나의 파라미터: attention $4d^2 = 589{,}824$ + FFN $3dh = 1{,}179{,}648$ + RMSNorm $2d = 768$ = **1,770,240**. FFN이 attention의 두 배다.
+
+## 4. 구현 가이드
 
 - `RMSNorm`: `x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps) * weight`.
 - `SwiGLU`: `F.silu`를 써도 되지만 `g * torch.sigmoid(g)`로 직접 써 보는 것을 권장.
 - `Block`: `x = x + attn(norm1(x), cos, sin, cache)`, `x = x + ffn(norm2(x))`. cache 인자를 attention에 그대로 전달해야 step 14가 동작한다.
 
-## 4. 검증
+## 5. 검증
 
 `F.rms_norm`, `F.silu` 기반 참조와 비교하고, 블록 출력이 pre-norm residual 합성과 같은지 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/09_block.md](answers/09_block.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

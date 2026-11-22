@@ -47,17 +47,72 @@ m5 프리셋($V$=4096, $d$=384, $h$=1024, $L$=6): $1{,}572{,}864 + 6 \times 1{,}
 
 reward model(step 16)은 lm_head 대신 스칼라 head를 붙이므로 final norm까지의 hidden state가 필요하다. `hidden(idx, caches)`는 hidden을, `forward`는 logits와 loss를 반환한다. RoPE 테이블은 `register_buffer(persistent=False)`로 등록해 device 이동은 따라가되 체크포인트에는 저장하지 않는다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 토큰이 logits가 되기까지 (m5 프리셋, B=1, T=4)
+
+```mermaid
+graph LR
+  idx["idx (1,4) 정수"] --> emb["tok_emb → (1,4,384)"]
+  emb --> b["Block × 6 → (1,4,384)"]
+  b --> norm["RMSNorm → (1,4,384)"]
+  norm --> head["lm_head (= tok_embᵀ) → (1,4,4096)"]
+  head --> ce["cross_entropy(targets) → 스칼라"]
+```
+
+위치 $t$의 logits 4096개는 "위치 $t$ 다음에 올 토큰"에 대한 점수이다. 입력 `[a, b, c, d]`의 targets는 한 칸 민 `[b, c, d, e]`이다(step 11).
+
+### 3.2 파라미터 12.2M의 내역
+
+| 구성 | 계산 | 개수 | 비율 |
+|---|---|---|---|
+| 토큰 임베딩 (= lm_head, 공유) | 4096 × 384 | 1,572,864 | 12.9% |
+| attention × 6 | $4\cdot384^2 \times 6$ | 3,538,944 | 29.0% |
+| SwiGLU × 6 | $3\cdot384\cdot1024 \times 6$ | 7,077,888 | 58.0% |
+| RMSNorm (블록 12개 + 최종 1개) | $384 \times 13$ | 4,992 | 0.04% |
+| 합 | | **12,194,688** | |
+
+weight tying이 없으면 lm_head 1,572,864개가 더해져 13.8M이 된다.
+
+### 3.3 초기 loss 점검
+
+| 항목 | 값 |
+|---|---|
+| 균등 분포일 때 loss $\ln V$ | $\ln 4096 = 8.318$ |
+| 초기화 직후 실제 측정 (무작위 입력·target) | 8.370 |
+| perplexity $e^{8.37}$ | 약 4300 ≈ $V$ |
+
+초기 loss가 $\ln V$ 근처면 초기화가 정상이다. 예를 들어 10이나 20이 나오면 logits가 너무 크다는 뜻이므로 초기화 표준편차나 tying을 확인한다.
+
+### 3.4 초기화 스케일 비교 ($L = 6$)
+
+| 가중치 | 표준편차 | 이유 |
+|---|---|---|
+| 임베딩, `qkv`, `w_gate`, `w_up` | 0.02 | GPT-2 기본값 |
+| `attn.proj`, `ffn.w_down` | $0.02/\sqrt{12} = 0.00577$ | residual에 더해지는 출력. 12번($2L$) 누적되므로 각각을 줄인다 |
+| RMSNorm gain | 1 (상수) | 정규화 결과를 그대로 통과 |
+
+### 3.5 토큰당 학습 FLOPs
+
+| 항 | 계산 | FLOPs |
+|---|---|---|
+| 행렬곱 $6N$ | $6 \times 12.19\text{M}$ | 73.2M |
+| attention $6LTd$ | $6\times6\times256\times384$ | 3.5M |
+| 합 | | 약 76.7M / 토큰 |
+
+m5 학습 65.5M 토큰이면 $76.7\text{M}\times65.5\text{M} \approx 5.0\times10^{15}$ FLOPs이다.
+
+## 4. 구현 가이드
 
 - `__init__`: tying → `named_parameters()`를 돌며 `p.dim() >= 2`인 파라미터를 정규분포로 초기화하되 이름이 `proj.weight`, `w_down.weight`로 끝나면 축소된 표준편차 사용.
 - `hidden`: `cos, sin`은 cache 위치(`start`)부터 $T$개를 잘라 둔 상태로 주어진다. 블록 $i$에 `caches[i]`(없으면 None)를 넘긴다.
 - `forward`: `cross_entropy(logits.flatten(0, 1), targets.flatten())`.
 
-## 4. 검증
+## 5. 검증
 
 출력 shape, loss가 `F.cross_entropy`와 일치, 초기 loss ≈ $\ln V$, tying 여부, 초기화 표준편차, 파라미터 수 공식, causality를 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/10_gpt.md](answers/10_gpt.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 
