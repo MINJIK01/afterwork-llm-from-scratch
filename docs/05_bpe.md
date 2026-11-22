@@ -48,18 +48,113 @@ $V$가 크면 시퀀스가 짧아지지만, 임베딩과 출력층 파라미터 
 
 id → 바이트열을 이어 붙이고 UTF-8로 디코드한다. 토큰 경계가 멀티바이트 문자 중간에 있을 수 있으므로 **전체를 이어 붙인 뒤** 디코드해야 하며, 생성 도중의 불완전한 바이트열은 `errors="replace"`로 처리한다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 텍스트가 바이트가 되기까지
+
+| 문자 | UTF-8 바이트 (16진) | 초기 토큰 id |
+|---|---|---|
+| `a` | `61` | 97 |
+| `␣` (공백) | `20` | 32 |
+| `한` | `ED 95 9C` | 237, 149, 156 |
+| `🙂` | `F0 9F 99 82` | 240, 159, 153, 130 |
+
+byte-level BPE의 출발점은 256개 바이트이다. 한글 한 글자는 3개, 이모지는 4개의 바이트 토큰으로 시작하므로 어떤 문자열도 OOV 없이 표현된다. 자주 나오는 바이트열은 학습 중 병합되어 하나의 토큰이 된다.
+
+### 3.2 작은 말뭉치로 병합 8번 따라가기
+
+말뭉치(Sennrich et al.의 예):
+
+```
+low low low low low lower lower newest newest newest newest newest newest widest widest widest
+```
+
+**1단계: pre-tokenization.** 정규식이 공백을 다음 단어의 **앞**에 붙여 자른다(`␣`는 공백). 같은 조각은 빈도로 묶는다.
+
+| 조각 | 빈도 | 초기 바이트 |
+|---|---|---|
+| `low` | 1 | l o w |
+| `␣low` | 4 | ␣ l o w |
+| `␣lower` | 2 | ␣ l o w e r |
+| `␣newest` | 6 | ␣ n e w e s t |
+| `␣widest` | 3 | ␣ w i d e s t |
+
+맨 앞 `low`만 공백이 없어서 `␣low`와 다른 조각이 된다.
+
+**2단계: 반복 병합.** 매번 (빈도 가중) 인접 pair를 세어 최빈 pair를 합친다. 동률이면 바이트 값이 작은 pair가 이긴다.
+
+| 회차 | 상위 후보 (빈도) | 병합 | 새 id |
+|---|---|---|---|
+| 0 | e+s (9), s+t (9), w+e (8), l+o (7) | `e`+`s` → `es` | 256 |
+| 1 | es+t (9), l+o (7), o+w (7), ␣+l (6) | `es`+`t` → `est` | 257 |
+| 2 | l+o (7), o+w (7), ␣+l (6), ␣+n (6) | `l`+`o` → `lo` | 258 |
+| 3 | lo+w (7), ␣+n (6), ␣+lo (6), e+w (6) | `lo`+`w` → `low` | 259 |
+| 4 | ␣+n (6), ␣+low (6), e+w (6), n+e (6) | `␣`+`n` → `␣n` | 260 |
+| 5 | ␣+low (6), e+w (6), w+est (6), ␣n+e (6) | `␣`+`low` → `␣low` | 261 |
+| 6 | e+w (6), w+est (6), ␣n+e (6), ␣+w (3) | `e`+`w` → `ew` | 262 |
+| 7 | ␣n+ew (6), ew+est (6), ␣+w (3), d+est (3) | `␣n`+`ew` → `␣new` | 263 |
+
+빈도 계산 예(0회차): `e s`는 `␣newest`(6회)와 `␣widest`(3회)에 한 번씩 나오므로 $6 + 3 = 9$이다. 조각 하나에 한 번 나와도 그 조각의 빈도만큼 센다.
+
+8번 병합 후 각 조각의 모양:
+
+| 조각 | 토큰 |
+|---|---|
+| `low` | [low] |
+| `␣low` | [␣low] |
+| `␣lower` | [␣low] [e] [r] |
+| `␣newest` | [␣new] [est] |
+| `␣widest` | [␣] [w] [i] [d] [est] |
+
+### 3.3 처음 보는 단어 인코딩
+
+학습한 merge를 **학습 순서대로** 다시 적용한다. 매번 현재 시퀀스에 있는 pair 중 id가 가장 작은(가장 먼저 배운) 것을 합친다.
+
+`␣lowest` (말뭉치에 없음):
+
+| 단계 | 시퀀스 | 존재하는 merge 중 가장 이른 것 |
+|---|---|---|
+| 시작 | ␣ l o w e s t | e+s (256) |
+| 1 | ␣ l o w es t | es+t (257) |
+| 2 | ␣ l o w est | l+o (258) |
+| 3 | ␣ lo w est | lo+w (259) |
+| 4 | ␣ low est | ␣+low (261) |
+| 끝 | **␣low est** → id [261, 257] | 더 합칠 pair 없음 |
+
+| 입력 | 결과 토큰 |
+|---|---|
+| `␣lowest` | [␣low] [est] |
+| `␣newer` | [␣new] [e] [r] |
+| `␣slow` | [␣] [s] [low] — `␣s`는 배운 적이 없어서 공백이 따로 남는다 |
+
+말뭉치에 없던 단어도 아는 조각들로 쪼개진다. 이것이 subword 방식이 OOV를 없애는 원리이다.
+
+### 3.4 확인 코드
+
+```python
+from minillm.tokenizer import BPETokenizer
+
+text = "low low low low low lower lower newest newest newest newest newest newest widest widest widest"
+tok = BPETokenizer.train(text, 256 + 8)
+print([tok.vocab[i] for i in sorted(tok.merges.values())])
+# [b'es', b'est', b'lo', b'low', b' n', b' low', b'ew', b' new']
+for w in [" lowest", " newer", " slow"]:
+    ids = tok.encode(w)
+    print(repr(w), ids, [tok.decode([i]) for i in ids])
+```
+
+## 4. 구현 가이드
 
 - 조각은 `tuple[int, ...]`로 다룬다(dict key로 쓰기 위해 hashable).
 - `merge((1,1,1), (1,1), 9)` → `(9, 1)`: 왼쪽부터, 겹치지 않게.
 - `train`: `max(counts, key=lambda p: (counts[p], -p[0], -p[1]))`로 동률 규칙을 구현할 수 있다. 더 병합할 pair가 없으면 조기 종료한다(이 경우 vocab이 목표보다 작아진다).
 - `_encode_chunk`: `min(pairs, key=lambda p: self.merges.get(p, inf))`로 최저 rank pair를 찾는다.
 
-## 4. 검증
+## 5. 검증
 
 Wikipedia 예제의 정확한 merge 순서, 한글·이모지·탭·special token이 섞인 문자열의 왕복(encode→decode) 일치, 저장/로드 후 동일 인코딩, 압축률을 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/05_bpe.md](answers/05_bpe.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

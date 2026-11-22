@@ -52,17 +52,93 @@ $$\frac{\partial L}{\partial x_j} = \sum_i g_i \frac{\partial \hat x_i}{\partial
 
 backward에 필요한 값은 $\hat x$, rstd, $\gamma$뿐이므로 forward에서 이것만 cache에 저장하면 된다. 실제 fused LayerNorm 커널도 같은 방식으로 activation 메모리를 줄인다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 Linear backward를 2×3 행렬로
+
+$N = 2$개 샘플, $d_{in} = 3$, $d_{out} = 2$.
+
+$$X = \begin{pmatrix}1 & 2 & 3\\ 4 & 5 & 6\end{pmatrix},\quad W = \begin{pmatrix}1 & 0 & -1\\ 2 & 1 & 0\end{pmatrix},\quad b = (0.5,\ -0.5),\quad G = \frac{\partial L}{\partial Y} = \begin{pmatrix}1 & 0\\ 0 & 2\end{pmatrix}$$
+
+**Forward**: $Y = XW^\top + b = \begin{pmatrix}-1.5 & 3.5\\ -1.5 & 12.5\end{pmatrix}$.
+
+**Shape부터 맞추기.** 결과 shape은 미분 대상과 같아야 한다.
+
+| 구하는 것 | 목표 shape | 가진 재료 | 곱하는 방법 |
+|---|---|---|---|
+| $dX$ | (2, 3) | $G$ (2, 2), $W$ (2, 3) | $G\,W$ |
+| $dW$ | (2, 3) | $G$ (2, 2), $X$ (2, 3) | $G^\top X$ |
+| $db$ | (2,) | $G$ (2, 2) | 행 방향 합 |
+
+**값**
+
+$$dX = GW = \begin{pmatrix}1 & 0 & -1\\ 4 & 2 & 0\end{pmatrix},\quad dW = G^\top X = \begin{pmatrix}1 & 2 & 3\\ 8 & 10 & 12\end{pmatrix},\quad db = (1,\ 2)$$
+
+**한 원소만 손으로 검산.** $dW_{1,0}$은 "출력 1번이 입력 0번에서 받는 가중치"의 기울기이다. $Y_{n,1} = \sum_i X_{n,i}W_{1,i} + b_1$이므로 $\partial L/\partial W_{1,0} = \sum_n G_{n,1}X_{n,0} = 0\cdot1 + 2\cdot4 = 8$. 표와 같다.
+
+### 3.2 LayerNorm forward 한 행
+
+$x = [1, 2, 3, 6]$, $\gamma = 1$, $\beta = 0$, 계산을 깔끔하게 하려고 $\epsilon = 0$.
+
+| 단계 | 값 |
+|---|---|
+| $\mu$ | $(1+2+3+6)/4 = 3$ |
+| $x - \mu$ | $[-2, -1, 0, 3]$ |
+| $\sigma^2$ (biased) | $(4+1+0+9)/4 = 3.5$ |
+| $s = \sqrt{3.5}$ | $1.8708$ (rstd $= 0.5345$) |
+| $\hat x = (x - \mu)/s$ | $[-1.0690, -0.5345, 0, 1.6036]$ |
+
+$\hat x$의 평균은 0, 분산은 1이다. 입력에 5를 더하거나(→ $[6,7,8,11]$) 10을 곱해도(→ $[10,20,30,60]$) $\hat x$는 같다.
+
+### 3.3 LayerNorm backward 한 행
+
+위 행에서 $\partial L/\partial y = g = [1, 0, 0, 0]$이 들어왔다고 하자($\gamma = 1$이므로 $\partial L/\partial\hat x$도 $g$).
+
+$$\frac{\partial L}{\partial x_j} = \frac{1}{s}\Big(g_j - \overline g - \hat x_j\,\overline{g\odot\hat x}\Big)$$
+
+| 항 | 값 |
+|---|---|
+| $\overline g$ | $0.25$ |
+| $\overline{g\odot\hat x}$ | $(-1.0690)/4 = -0.2673$ |
+| $g - \overline g$ | $[0.75, -0.25, -0.25, -0.25]$ |
+| $-\hat x\,\overline{g\odot\hat x}$ | $[-0.2857, -0.1429, 0, 0.4286]$ |
+| 괄호 합 | $[0.4643, -0.3929, -0.25, 0.1786]$ |
+| $\times\ 1/s = 0.5345$ | $[\mathbf{0.2482}, \mathbf{-0.2100}, \mathbf{-0.1336}, \mathbf{0.0955}]$ |
+
+결과의 두 성질을 확인한다.
+
+- $\sum_j \partial L/\partial x_j = 0$: 모든 입력에 같은 값을 더해도 출력이 변하지 않으므로, 그 방향의 기울기는 0이다.
+- $\sum_j \hat x_j\,\partial L/\partial x_j = 0$: 입력을 일정 배율로 키워도 출력이 변하지 않으므로, 그 방향의 기울기도 0이다.
+
+$x_0$ 한 원소만 바꾼 영향($g = [1,0,0,0]$)이 다른 원소들의 gradient에도 퍼진다. 평균과 분산이 행 전체로 계산되기 때문이다. Linear와 달리 LayerNorm의 Jacobian이 대각행렬이 아닌 이유이다.
+
+### 3.4 확인 코드
+
+```python
+import torch
+from minillm.functional import linear_backward, layer_norm_forward, layer_norm_backward
+
+X = torch.tensor([[1., 2., 3.], [4., 5., 6.]]); W = torch.tensor([[1., 0., -1.], [2., 1., 0.]])
+G = torch.tensor([[1., 0.], [0., 2.]])
+print(linear_backward(X, W, G))  # dX, dW, db = 3.1의 값
+
+x = torch.tensor([[1., 2., 3., 6.]])
+y, cache = layer_norm_forward(x, torch.ones(4), torch.zeros(4), eps=0.0)
+dx, dgamma, dbeta = layer_norm_backward(torch.tensor([[1., 0., 0., 0.]]), cache)
+print(y, dx, dx.sum())           # 3.2, 3.3의 값, 합 0
+```
+
+## 4. 구현 가이드
 
 - 입력은 `(N, D)`, 정규화 축은 마지막 축, `keepdim=True`로 broadcast 유지.
 - `x.var(-1, unbiased=False)`로 biased 분산을 써야 `F.layer_norm`과 일치한다.
 - `layer_norm_forward`는 `(y, cache)`를 반환하고 `layer_norm_backward(grad_out, cache)`는 `(dx, dgamma, dbeta)`를 반환한다. cache 구성은 자유지만 위 유도에 필요한 최소값을 담는 것을 권장한다.
 
-## 4. 검증
+## 5. 검증
 
 `F.linear`, `F.layer_norm`의 autograd gradient와 float64로 비교한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/03_manual_backward.md](answers/03_manual_backward.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

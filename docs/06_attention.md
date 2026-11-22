@@ -42,17 +42,108 @@ score 행렬은 $T_q \times T_k$이므로 시간 $O(T_q T_k d)$, 메모리 $O(T_
 
 attention은 key/value의 순서를 바꿔도 결과가 같고, query 순서를 바꾸면 출력도 같은 순서로 바뀐다. 즉 위치 정보가 없다. 언어 모델에는 순서가 필요하므로 위치 인코딩이 필요하다(step 07).
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 토큰 3개, 차원 2짜리 attention을 손으로
+
+$$Q = \begin{pmatrix}1 & 0\\ 0 & 1\\ 1 & 1\end{pmatrix},\quad K = \begin{pmatrix}1 & 0\\ 1 & 1\\ 0 & 1\end{pmatrix},\quad V = \begin{pmatrix}1 & 0\\ 0 & 2\\ 3 & 1\end{pmatrix}$$
+
+행 $i$는 위치 $i$의 query, key, value이다.
+
+**① score $QK^\top$** (query $i$와 key $j$의 내적)
+
+| | key 0 | key 1 | key 2 |
+|---|---|---|---|
+| query 0 | 1 | 1 | 0 |
+| query 1 | 0 | 1 | 1 |
+| query 2 | 1 | 2 | 1 |
+
+**② $\sqrt{d_k} = \sqrt 2$로 나누고 causal mask 적용** (미래 key는 $-\infty$)
+
+| | key 0 | key 1 | key 2 |
+|---|---|---|---|
+| query 0 | 0.7071 | −∞ | −∞ |
+| query 1 | 0 | 0.7071 | −∞ |
+| query 2 | 0.7071 | 1.4142 | 0.7071 |
+
+**③ 행별 softmax** → attention 가중치 $\alpha$ (각 행의 합 = 1)
+
+| | key 0 | key 1 | key 2 |
+|---|---|---|---|
+| query 0 | **1.0000** | 0 | 0 |
+| query 1 | 0.3302 | **0.6698** | 0 |
+| query 2 | 0.2483 | **0.5035** | 0.2483 |
+
+**④ 출력 $O = \alpha V$** (value 행들의 가중평균)
+
+| | 출력 |
+|---|---|
+| query 0 | $1.0\cdot[1,0]$ = [1.0000, 0.0000] |
+| query 1 | $0.3302\cdot[1,0] + 0.6698\cdot[0,2]$ = [0.3302, 1.3395] |
+| query 2 | $0.2483\cdot[1,0] + 0.5035\cdot[0,2] + 0.2483\cdot[3,1]$ = [0.9930, 1.2552] |
+
+- query 0은 자기 자신만 볼 수 있으므로 출력이 $V_0$ 그대로이다.
+- query 2는 key 1과 내적이 가장 커서(2) 가중치도 가장 크다(0.5035).
+- 마스크된 위치는 $e^{-\infty} = 0$이 되어 가중치가 정확히 0이다.
+
+### 3.2 shape으로 보는 attention
+
+```mermaid
+graph LR
+  Q["Q (…, Tq, d)"] --> S["Q Kᵀ / √d  (…, Tq, Tk)"]
+  K["K (…, Tk, d)"] --> S
+  S --> M["mask: False → −∞"]
+  M --> P["softmax(dim=-1)  (…, Tq, Tk)"]
+  P --> O["P V  (…, Tq, dv)"]
+  V["V (…, Tk, dv)"] --> O
+```
+
+앞의 `…`(배치, head 등)는 그대로 통과한다. `k.transpose(-2, -1)`이 마지막 두 축만 바꾸기 때문이다.
+
+### 3.3 $\sqrt{d_k}$로 나누는 효과를 숫자로
+
+성분이 표준정규분포인 $q, k$ 1만 쌍으로 내적의 표준편차를 재면:
+
+| $d_k$ | $q\cdot k$의 표준편차 | $\sqrt{d_k}$로 나눈 뒤 |
+|---|---|---|
+| 4 | 1.99 | 1.00 |
+| 64 | 8.01 | 1.00 |
+| 512 | 22.49 | 0.99 |
+
+이론값 $\sqrt{d_k}$(2, 8, 22.6)와 일치한다. $d_k = 64$에서 key 8개에 대해 softmax를 했을 때:
+
+| | 가장 큰 가중치의 평균 | softmax Jacobian 대각 $p(1-p)$의 최댓값 평균 |
+|---|---|---|
+| 나누지 않음 | 0.878 | 0.081 |
+| $\sqrt{64}$로 나눔 | 0.364 | 0.217 |
+
+나누지 않으면 가중치가 한 key에 몰리고(거의 one-hot) gradient가 흐르는 크기가 약 1/3로 줄어든다.
+
+### 3.4 확인 코드
+
+```python
+import torch
+from minillm.layers import scaled_dot_product_attention
+
+Q = torch.tensor([[1., 0.], [0., 1.], [1., 1.]])
+K = torch.tensor([[1., 0.], [1., 1.], [0., 1.]])
+V = torch.tensor([[1., 0.], [0., 2.], [3., 1.]])
+mask = torch.ones(3, 3, dtype=torch.bool).tril()
+print(scaled_dot_product_attention(Q, K, V, mask))
+# [[1.0000, 0.0000], [0.3302, 1.3395], [0.9930, 1.2552]]
+```
+
+## 4. 구현 가이드
 
 - `k.transpose(-2, -1)`로 마지막 두 축만 전치하면 선행 차원은 matmul broadcasting이 처리한다.
 - `scores.masked_fill(~mask, float("-inf"))` 후 step 02의 `softmax(scores, dim=-1)`.
 - 스케일은 `q.shape[-1]` 기준.
 
-## 4. 검증
+## 5. 검증
 
 `(B, H, Tq, d)`, `(B, H, Tk, d)` 입력과 causal mask에 대해 `F.scaled_dot_product_attention`과 비교한다. 이때 torch 내장 softmax/SDPA 호출은 차단된다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/06_attention.md](answers/06_attention.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 
