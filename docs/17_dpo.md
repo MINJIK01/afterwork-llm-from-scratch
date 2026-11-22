@@ -73,17 +73,81 @@ chosen의 우도를 높이고 rejected의 우도를 낮추며, implicit reward�
 
 SFT 모델로 학습용 키워드 프롬프트마다 $k = 4$개를 샘플링하고, 규칙 보상(키워드 포함 + EOS 종료)이 1인 응답과 0인 응답이 모두 있으면 하나씩 골라 (chosen, rejected) 쌍을 만든다. 학습 후 평가 키워드 적중률이 SFT보다 오르는지 확인한다. `python scripts/compare.py`로 적중률과 함께 응답 길이, SFT 대비 KL, val loss가 어떻게 변했는지 확인한다(2.7의 길이 편향, 참조에서 벗어난 정도).
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 선호 쌍 하나로 DPO loss 계산
+
+응답 전체의 로그확률(토큰 log-prob의 합):
+
+| | chosen $y_w$ | rejected $y_l$ |
+|---|---|---|
+| 정책 $\log\pi_\theta$ | −50 | −60 |
+| 참조 $\log\pi_{ref}$ | −52 | −59 |
+| log-ratio $\log\pi_\theta - \log\pi_{ref}$ | **+2** (참조보다 더 그럴듯하게 봄) | **−1** (덜 그럴듯하게 봄) |
+
+| $\beta$ | implicit reward chosen $\beta\cdot(+2)$ | rejected $\beta\cdot(-1)$ | margin | loss $-\log\sigma(\text{margin})$ | gradient 가중치 $\sigma(-\text{margin})$ |
+|---|---|---|---|---|---|
+| 0.1 | 0.2 | −0.1 | 0.3 | 0.5544 | 0.4256 |
+| 0.5 | 1.0 | −0.5 | 1.5 | 0.2014 | 0.1824 |
+
+- 정책은 이미 참조보다 chosen을 올리고 rejected를 내린 상태이므로 loss가 $\ln 2 = 0.6931$보다 작다.
+- 같은 log-ratio라도 $\beta$가 크면 margin이 커져 loss가 빨리 포화된다. $\beta$가 클수록 참조에서 조금만 벗어나도 "충분하다"고 판단하므로 보수적으로 움직인다.
+
+### 3.2 학습 시작 시점
+
+학습 시작 때 정책 = 참조이므로 모든 log-ratio가 0이다.
+
+| | 값 |
+|---|---|
+| margin | 0 |
+| loss | $\ln 2 = 0.6931$ (데이터 전체에서 동일) |
+| gradient 가중치 | 0.5 |
+
+`dpo.py` 로그의 첫 줄이 `dpo loss 0.6931`이 아니면 참조 모델이나 로그확률 계산에 문제가 있다.
+
+### 3.3 무엇이 학습되나
+
+```mermaid
+graph LR
+  d["선호 쌍 (x, y_w, y_l)"] --> lp["정책·참조로 4개 로그확률 계산"]
+  lp --> r["implicit reward r̂ = β(log π − log π_ref)"]
+  r --> bt["BT loss: −log σ(r̂_w − r̂_l)"]
+  bt --> g["∇: y_w 로그확률 ↑, y_l 로그확률 ↓ (순서가 틀린 쌍일수록 크게)"]
+```
+
+참조 모델의 로그확률은 학습 중 변하지 않으므로 `dpo.py`는 처음에 한 번 계산해 둔다.
+
+### 3.4 시퀀스 로그확률은 응답 토큰만 합친다
+
+| 위치 | 프롬프트 | 프롬프트 | 응답 | 응답 | 응답 | pad |
+|---|---|---|---|---|---|---|
+| 라벨 | −100 | −100 | 10 | 11 | 0 | −100 |
+| 토큰 log-prob | (무시) | (무시) | −1.2 | −0.4 | −0.9 | (무시) |
+
+$\log\pi(y\mid x) = -1.2 - 0.4 - 0.9 = -2.5$. 라벨 구성은 SFT의 `build_sft_example`을 그대로 쓴다.
+
+### 3.5 로그 지표 읽기
+
+| 지표 | 의미 | 기대하는 흐름 |
+|---|---|---|
+| `dpo loss` | 위 3.1의 평균 | $\ln 2$에서 시작해 감소 |
+| `reward acc` | $\hat r_w > \hat r_l$인 쌍의 비율 | 0.5 근처에서 1 쪽으로 |
+| `margin` | $\hat r_w - \hat r_l$ 평균 | 0에서 증가 |
+| keyword hit rate (학습 후) | 실제 생성의 규칙 보상 | SFT보다 높아야 의미 있음 |
+
+margin과 reward acc만 오르고 hit rate가 그대로면, chosen과 rejected의 우도를 모두 낮추면서 차이만 벌린 경우일 수 있다(§2.7).
+
+## 4. 구현 가이드
 
 - `token_logprobs(logits, targets)`: step 02 `log_softmax` 후 `gather`. 음수 라벨은 `clamp(min=0)`으로 인덱싱(값은 이후 마스크로 버린다).
 - `sequence_logprobs(model, input_ids, labels)`: `(token_logprobs * (labels != -100)).sum(-1)`.
 - `dpo_loss`: `rc = β(π_c − ref_c)`, `rr = β(π_r − ref_r)`, `bradley_terry_loss(rc, rr)`와 detach된 `rc, rr` 반환.
 
-## 4. 검증
+## 5. 검증
 
 참조 구현과 로그확률 비교, loss 값, $\pi = \pi_{ref}$에서 loss $= \ln 2$, chosen gradient 음수/rejected gradient 양수를 확인한다. `dpo.py`는 reward accuracy, margin, 학습 전후 적중률을 출력한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/17_dpo.md](answers/17_dpo.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

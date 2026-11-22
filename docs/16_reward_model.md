@@ -50,16 +50,72 @@ LM 백본(`GPT.hidden`)의 마지막 hidden state에 선형 head를 붙여 스�
 
 InstructGPT식 RLHF는 (1) 사람 선호 라벨로 RM 학습 → (2) RM을 보상으로 PPO 단계로 진행한다. 이 레포의 과제(키워드 포함 여부)는 보상을 규칙으로 정확히 계산할 수 있어 파이프라인에서는 학습된 RM 대신 규칙 보상을 쓴다. 이 단계는 RM의 구성 요소와 BT loss를 구현해 DPO 유도의 기초로 삼는다. 학습된 RM을 정책 최적화에 쓰면 RM의 오차를 정책이 이용하는 reward overoptimization(Gao et al. 2023)이 발생한다는 점도 기억해 둔다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 보상 차이 → 선호 확률 → loss → gradient
+
+$z = r(y_w) - r(y_l)$ (chosen 보상 − rejected 보상):
+
+| $z$ | $P(y_w \succ y_l) = \sigma(z)$ | loss $-\log\sigma(z)$ | $\partial\,\text{loss}/\partial z$ |
+|---|---|---|---|
+| −2 | 0.1192 | 2.1269 | −0.8808 |
+| −1 | 0.2689 | 1.3133 | −0.7311 |
+| **0** | **0.5** | **0.6931** ($\ln 2$) | **−0.5** |
+| 1 | 0.7311 | 0.3133 | −0.2689 |
+| 2 | 0.8808 | 0.1269 | −0.1192 |
+| 4 | 0.9820 | 0.0181 | −0.0180 |
+
+- 순서를 틀리게 매긴 쌍($z < 0$)일수록 gradient가 크다(최대 크기 1).
+- 이미 잘 구분한 쌍($z = 4$)은 거의 학습 신호가 없다.
+- $z = 0$에서 gradient는 정확히 −0.5여야 한다. DPO는 학습 시작 시 모든 쌍이 $z = 0$이다(step 17).
+
+### 3.2 선호 데이터 예시 (이 레포의 과제)
+
+프롬프트: `Write a story that uses the word "ball".`
+
+| | 응답 | 규칙 보상 | 이 쌍에서의 역할 |
+|---|---|---|---|
+| A | "Lily found a red ball in the park. … <EOS>" | 1 (키워드 포함 + 끝맺음) | chosen |
+| B | "Tom went to the park with his mom. … <EOS>" | 0 (키워드 없음) | rejected |
+
+reward model을 학습하면 $r(A) > r(B)$가 되도록, 즉 $z = r(A) - r(B)$가 커지도록 파라미터가 움직인다. 이 레포는 보상을 규칙으로 바로 계산할 수 있어서 학습된 RM 대신 규칙 보상을 쓴다.
+
+### 3.3 reward model은 어느 위치를 읽나
+
+오른쪽 padding된 배치, `lengths = [6, 10]`:
+
+```
+시퀀스 0: [t0 t1 t2 t3 t4 t5 pad pad pad pad]   ← hidden[0, 5]을 head에 넣는다
+시퀀스 1: [t0 t1 t2 t3 t4 t5 t6  t7  t8  t9 ]   ← hidden[1, 9]
+                                ↑ lengths − 1
+```
+
+causal 모델에서 마지막 유효 위치는 프롬프트와 응답 전체를 본 유일한 위치이다. padding 위치의 hidden은 의미가 없으므로 `h[torch.arange(B), lengths - 1]`로 골라낸다.
+
+### 3.4 안정화 공식의 함정 직접 보기
+
+```python
+import torch
+z = torch.zeros(1, requires_grad=True)
+(torch.clamp(-z, min=0) + torch.log1p(torch.exp(-z.abs()))).sum().backward()
+print(z.grad)   # tensor([-0.])  ← 값은 맞지만 gradient가 0
+
+from minillm.align import bradley_terry_loss
+z = torch.zeros(1, requires_grad=True)
+bradley_terry_loss(z, torch.zeros(1)).backward()
+print(z.grad)   # tensor([-0.5000])  ← 3.1 표의 값
+```
+
+## 4. 구현 가이드
 
 - `bradley_terry_loss`: `torch.stack([z, zeros_like(z)], -1)`에 step 02 `log_softmax`, 인덱스 0의 음수 평균. `F.logsigmoid`, `F.softplus`는 쓰지 않는다.
 - `RewardModel.forward(idx, lengths)`: `h = self.gpt.hidden(idx)`, `h[torch.arange(B), lengths - 1]` → `self.head` → `squeeze(-1)`.
 
-## 4. 검증
+## 5. 검증
 
 `-F.logsigmoid`와 값 비교, $|z| = 10^4$에서 유한성, $z = 0$에서 gradient, 마지막 유효 토큰 이후를 바꿔도 보상이 불변인지 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/16_reward_model.md](answers/16_reward_model.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 
