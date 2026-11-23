@@ -54,16 +54,80 @@ python scripts/sft.py --lora_r 8 --lr 1e-3 --out out/sft_lora.pt
 
 학습 파라미터 수(로그의 `trainable params`)와 학습 후 키워드 적중률을 전체 SFT(`out/sft.pt`)와 비교한다. LoRA는 학습 파라미터가 적어 전체 미세조정보다 큰 lr(1e-3 수준)을 쓴다. `python scripts/compare.py --ref out/pretrain.pt`로 비교하면 KL과 val loss 열이 사전학습 모델에서 벗어난 정도를 보여 준다. "LoRA는 덜 배우고 덜 잊는다"는 보고(2.6)를 이 규모에서 확인해 볼 수 있다.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 shape으로 보는 LoRA
+
+$d_{in} = 4$, $d_{out} = 3$, $r = 1$, $\alpha = 2$ (scaling $\alpha/r = 2$):
+
+```
+x (4) ──► W₀ (3×4, 고정) ──────────────► (3) ─┐
+   │                                          (+) ──► h (3)
+   └──► A (1×4) ──► (1) ──► B (3×1) ──► ×2 ──┘
+        학습           병목 r=1     학습
+```
+
+| | shape | 학습 | 파라미터 수 |
+|---|---|---|---|
+| $W_0$ | (3, 4) | ✗ | 12 |
+| $A$ | (1, 4) | O | 4 |
+| $B$ | (3, 1) | O, 0으로 초기화 | 3 |
+
+$\Delta W = 2\cdot BA$는 (3, 4) 행렬이지만 rank가 1이다. 12개 원소를 7개 파라미터로 표현한다.
+
+### 3.2 실제 크기에서의 절약
+
+$r = 8$:
+
+| 레이어 | $d_{in}\times d_{out}$ (전체 미세조정) | $r(d_{in} + d_{out})$ (LoRA) | 비율 |
+|---|---|---|---|
+| m5 `qkv` (384 → 1152) | 442,368 | 12,288 | 2.78% |
+| m5 `proj` (384 → 384) | 147,456 | 6,144 | 4.17% |
+| 7B급 attention (4096 → 4096) | 16,777,216 | 65,536 | 0.39% |
+
+레이어가 클수록 비율이 작아진다. optimizer 상태(Adam $m, v$)도 이 비율만큼만 필요하다.
+
+### 3.3 학습이 시작되는 순서
+
+| 시점 | $B$ | $\partial L/\partial A \propto B^\top$ | $\partial L/\partial B \propto Ax$ | 출력 |
+|---|---|---|---|---|
+| 초기화 직후 | 0 | **0** | 0이 아님 | base와 정확히 같음 |
+| 1스텝 후 | 0이 아님 | 0이 아님 | 0이 아님 | base에서 조금 이동 |
+
+첫 스텝에는 $B$만 움직이고, 그다음부터 $A$도 학습된다. 테스트 `test_gradients_only_to_adapters`가 첫 상태에서 `A.grad == 0`을 확인한다.
+
+### 3.4 병합
+
+$W = W_0 + \frac{\alpha}{r}BA$. 예: $W_0$의 한 행이 $[1, 0, 0, 0]$, 학습 후 $B$의 그 행이 0.5, $A = [0.2, -0.1, 0, 0.4]$, scaling 2:
+
+$$[1, 0, 0, 0] + 2\times0.5\times[0.2, -0.1, 0, 0.4] = [1.2,\ -0.1,\ 0,\ 0.4]$$
+
+병합 뒤에는 일반 `nn.Linear` 하나이므로 추론 비용이 원래 모델과 같다. `merge_lora`가 이 계산을 모든 LoRA 레이어에 적용하고 `state_dict` 키를 원래대로 되돌린다.
+
+### 3.5 확인 코드
+
+```python
+import torch
+from minillm.lora import LoRALinear, trainable_params
+
+base = torch.nn.Linear(4, 3, bias=False)
+lora = LoRALinear(base, r=1, alpha=2)
+x = torch.randn(2, 4)
+print(torch.allclose(lora(x), base(x)), trainable_params(lora))   # True 7
+lora.B.data.fill_(0.5)
+print(torch.allclose(lora.merge()(x), lora(x), atol=1e-6))        # True
+```
+
+## 4. 구현 가이드
 
 - `forward`: `self.base(x) + (x @ A.T @ B.T) * scaling`. $BA$를 먼저 곱해 $d_{out}\times d_{in}$ 행렬을 만들지 말고, $x$에 $A^\top$, $B^\top$ 순으로 곱해 $O(r(d_{in}+d_{out}))$로 계산한다.
 - `merge`: 새 `nn.Linear`에 `base.weight + scaling * B @ A`와 bias를 복사.
 
-## 4. 검증
+## 5. 검증
 
 초기 출력 = base 출력, 학습 파라미터가 `A`, `B`뿐인지, forward 식과 병합 결과 일치, 초기 $\partial L/\partial A = 0$이고 $B$만 gradient를 받는지, GPT에 적용 후 학습하면 loss가 줄고 병합 후 `state_dict` 키와 출력이 유지되는지 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/24_lora.md](answers/24_lora.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

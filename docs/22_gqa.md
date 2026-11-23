@@ -41,17 +41,67 @@ K, V를 $(B, G, T, d_h)$로 계산·저장하고, attention 직전에 각 head�
 
 `GPTConfig.n_kv_head`가 None이거나 `n_head`와 같으면 기존 `CausalSelfAttention`, 아니면 `GroupedQueryAttention`이 쓰인다. `GPT.new_caches`는 `n_kv_head`개 head로 cache를 할당한다. `--n_kv_head 2`(m5 프리셋 $H = 6$이므로 그룹 크기 3)로 학습해 MHA 모델과 val loss와 KV cache 크기를 비교해 보라.
 
-## 3. 구현 가이드
+## 3. 예제로 따라가기
+
+### 3.1 head 대응표 ($H = 6$, $G = 2$)
+
+`repeat_interleave(3, dim=1)`로 KV head를 3번씩 연속 반복한다.
+
+| query head | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| 사용하는 KV head ($h // 3$) | 0 | 0 | 0 | 1 | 1 | 1 |
+
+```
+K (저장)     : [K0, K1]                         (B, 2, T, d_h)
+repeat_kv(3) : [K0, K0, K0, K1, K1, K1]         (B, 6, T, d_h)
+```
+
+`repeat(1, 3, 1, 1)`을 쓰면 `[K0, K1, K0, K1, K0, K1]`이 되어 대응이 $h \bmod 2$로 바뀐다. 학습한 모델을 다른 구현에서 불러올 때 결과가 달라진다.
+
+### 3.2 같은 모델에서 MHA, GQA, MQA 비교 (m5 프리셋, $H = 6$, $d_h = 64$)
+
+| | KV head | `kv` 가중치 shape | attention 파라미터/레이어 | KV cache (B=1, T=256, fp32) |
+|---|---|---|---|---|
+| MHA | 6 | (768, 384) | 589,824 | 4.50 MiB |
+| GQA | 3 | (384, 384) | 442,368 | 2.25 MiB |
+| GQA | 2 | (256, 384) | 393,216 | 1.50 MiB |
+| MQA | 1 | (128, 384) | 344,064 | 0.75 MiB |
+
+(MHA 행의 `kv` shape은 비교를 위해 K, V를 합쳐 계산한 값이다. 실제 MHA 구현은 Q까지 합친 `qkv`를 쓴다.)
+
+### 3.3 decode 한 토큰에서 읽는 바이트
+
+7B급 모델(가중치 fp16 약 13 GiB, $L = 32$, $H = 32$, $d_h = 128$), 배치 8, 문맥 4096:
+
+| | KV cache | 가중치 + KV | MHA 대비 |
+|---|---|---|---|
+| MHA ($G = 32$) | 16 GiB | 29 GiB | 1.0 |
+| GQA ($G = 8$) | 4 GiB | 17 GiB | 0.59 |
+| MQA ($G = 1$) | 0.5 GiB | 13.5 GiB | 0.47 |
+
+decode는 memory-bound이므로 토큰당 시간은 대략 읽는 바이트에 비례한다. 이 설정에서는 GQA만으로 토큰당 읽는 양이 약 40% 줄어든다.
+
+### 3.4 확인 코드
+
+```python
+import torch
+from minillm.layers import repeat_kv
+
+k = torch.arange(2).float().view(1, 2, 1, 1)   # KV head 0, 1을 값 0, 1로 표시
+print(repeat_kv(k, 3).flatten().tolist())       # [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+```
+
+## 4. 구현 가이드
 
 - `repeat_kv(x, n_rep)`: `n_rep == 1`이면 그대로 반환.
 - `forward` 첫 구간: `q`는 `(B, H, T, d_h)`, `self.kv(x)`를 `(B, T, 2G, d_h)`로 view 후 transpose하고 `chunk(2, dim=1)`로 앞 $G$개를 K, 뒤 $G$개를 V로. RoPE를 q, k에 적용.
 - 두 번째 구간: step 08과 같은 오프셋 마스크, `repeat_kv`로 확장한 K/V로 attention, 출력 투영.
 
-## 4. 검증
+## 5. 검증
 
 `repeat_kv`의 head 대응, `F.scaled_dot_product_attention(enable_gqa=True)` 참조와의 일치, MQA 파라미터 수와 causality, GQA GPT에서 cache 증분 logits = 전체 logits, cache head 수를 확인한다.
 
-## 5. 확인 문제
+## 6. 확인 문제
 
 > 해설: [answers/22_gqa.md](answers/22_gqa.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 

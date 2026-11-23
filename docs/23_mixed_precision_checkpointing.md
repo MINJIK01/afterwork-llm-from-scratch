@@ -66,18 +66,82 @@ AdamW + fp32 학습에서 파라미터당 메모리는 파라미터 4B + gradien
 
 `enable_checkpointing(model)`은 각 `Block` 인스턴스의 클래스를 `CheckpointedBlock`(Block 하위 클래스)으로 바꿔, 학습 중(grad 활성, cache 없음) forward만 checkpoint로 감싼다. 모듈 구조가 그대로이므로 `state_dict` 키가 바뀌지 않아 체크포인트 호환성이 유지된다.
 
-## 4. 구현 가이드
+## 4. 예제로 따라가기
+
+### 4.1 비트로 보는 fp32와 bf16
+
+$1.0$ = `0x3F800000`:
+
+```
+fp32: 0 | 01111111 | 00000000000000000000000
+      부호  지수(8)    가수(23)
+bf16: 0 | 01111111 | 0000000                 ← fp32의 상위 16비트
+fp16: 0 | 01111    | 0000000000              ← 지수 5비트, 가수 10비트 (다른 배치)
+```
+
+bf16은 fp32에서 가수 하위 16비트를 잘라낸 형식이다. 지수가 같으므로 표현 범위가 같다.
+
+### 4.2 반올림 예
+
+| 값 | fp32 비트 (16진) | 하위 16비트 | 비트 16 (짝/홀) | bf16 결과 | 오차 |
+|---|---|---|---|---|---|
+| 1.0 | `3F80 0000` | `0000` | 0 | 1.0 | 0 |
+| $1 + 2^{-8}$ | `3F80 8000` | `8000` (정확히 중간) | 0 (짝) | **1.0** (내림) | $2^{-8}$ |
+| $1 + 3\cdot2^{-8}$ | `3F81 8000` | `8000` (정확히 중간) | 1 (홀) | **1.015625** (올림, `3F82`) | $2^{-8}$ |
+| 0.1 | `3DCC CCCD` | `CCCD` (> 중간) | | 0.10009765625 (`3DCD`) | $9.8\times10^{-5}$ |
+| 3.14159 | `4049 0FD0` | `0FD0` (< 중간) | | 3.140625 (`4049`) | $9.7\times10^{-4}$ |
+
+bf16의 유효숫자는 십진수로 약 3자리이다.
+
+### 4.3 master weight가 필요한 이유
+
+| 계산 | fp32 | bf16 |
+|---|---|---|
+| $1.0 + 0.001$ | 1.001 | **1.0** (업데이트 소실) |
+
+bf16에서 1.0 근처의 간격은 $2^{-7} = 0.0078$이고, 그 절반(0.0039)보다 작은 변화는 반올림되어 사라진다. 학습률 × gradient는 대개 이보다 작으므로 파라미터는 fp32로 유지한다.
+
+### 4.4 fp16 loss scaling 예
+
+| | 그대로 (fp16) | loss × 65536 후 (fp16) |
+|---|---|---|
+| gradient $10^{-8}$ | **0** (fp16 최소 subnormal $6\times10^{-8}$보다 작음) | $6.55\times10^{-4}$ (표현됨) |
+| optimizer에 넣기 전 | | ÷ 65536 (fp32에서) → $10^{-8}$ |
+
+동적 scaling의 흐름 (`growth_interval = 2` 예):
+
+| 스텝 | scale | gradient 상태 | 동작 | 다음 scale |
+|---|---|---|---|---|
+| 1 | 65536 | 정상 | step 수행, 성공 1 | 65536 |
+| 2 | 65536 | 정상 | step 수행, 성공 2 → 2배 | 131072 |
+| 3 | 131072 | **inf** | **step 건너뜀**, 절반 | 65536 |
+| 4 | 65536 | 정상 | step 수행 | 65536 |
+
+### 4.5 checkpointing 전후의 저장량
+
+블록 6개짜리 모델의 forward에서 backward용으로 저장되는 것:
+
+```
+일반:          [블록1 내부 전부][블록2 내부 전부] … [블록6 내부 전부]
+checkpointing: [x₀][x₁][x₂][x₃][x₄][x₅]  ← 블록 입력만
+backward 중:   블록6 입력 x₅로 블록6을 다시 forward → 내부 activation 복원 → backward → 버림
+               블록5 …
+```
+
+테스트(`test_checkpointing_same_grads_less_memory`)에서는 tiny 모델에서 저장 바이트가 절반 이하로 줄고 gradient는 같음을 확인한다. 비용은 forward 한 번 추가, 학습 FLOPs 약 +33%이다.
+
+## 5. 구현 가이드
 
 - `bf16_round`: `x.float().view(torch.int32)`로 비트를 얻고 2.2의 식 적용 후 `view(torch.float32)`. Python의 `~0xFFFF`는 int32 마스크 `0xFFFF0000`과 같다.
 - `LossScaler.unscale_`: grad를 나누고 `torch.isfinite`로 검사, `update`: 2.5의 규칙.
 - `train_step_amp`: step 12 `train_step`과 같은 구조에 autocast, fp32 loss, scaler 분기를 더한다. overflow면 optimizer step 없이 `(loss, inf)` 반환.
 - `CheckpointFunction`: 3.3 그대로.
 
-## 5. 검증
+## 6. 검증
 
 랜덤 비트 패턴 20만 개 + 정확히 중간인 값 + 최대값 근처 + subnormal에서 `x.to(torch.bfloat16)`와 비트 단위 일치, loss scaler 규칙, bf16 학습 스텝의 loss가 fp32와 0.05 이내이고 파라미터·grad가 fp32로 유지되는지, overflow 시 step 건너뛰기, checkpointing에서 gradient 일치·저장 activation 바이트 절반 미만·`state_dict` 키 불변을 확인한다.
 
-## 6. 확인 문제
+## 7. 확인 문제
 
 > 해설: [answers/23_mixed_precision_checkpointing.md](answers/23_mixed_precision_checkpointing.md) — 먼저 직접 풀어 본 뒤 확인할 것.
 
